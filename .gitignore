@@ -1,0 +1,50 @@
+﻿# Entorno virtual
+venv_find_docs/
+env/
+ENV/
+
+# Archivos de configuración sensibles
+.env
+config/credentials.json
+config/token.json
+config/config.json
+client_secret*.json
+*.secret.json
+*.env
+
+
+# Logs
+logs/*.log
+*.log
+
+# Archivos temporales
+temp/*
+!temp/.gitkeep
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Archivos de prueba
+test_data/
+sample_emails/
+
+# Documentos procesados
+processed_documents/
+output/
+
+# Respaldos
+backup/
+*.bak

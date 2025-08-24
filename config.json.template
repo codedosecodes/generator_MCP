@@ -1,0 +1,36 @@
+﻿{
+  "email_credentials": {
+    "server": "imap.gmail.com",
+    "port": 993,
+    "username": "tu-email@gmail.com",
+    "password": "tu-app-password"
+  },
+  "search_parameters": {
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-31",
+    "keywords": [
+      "factura",
+      "invoice",
+      "bill",
+      "receipt",
+      "payment"
+    ],
+    "folder_name": "Facturas_2024"
+  },
+  "processing_options": {
+    "max_emails": 1000,
+    "enable_ai_extraction": true,
+    "create_backup": true,
+    "send_completion_report": true
+  },
+  "google_services": {
+    "credentials_path": "./config/credentials.json",
+    "token_path": "./config/token.json",
+    "drive_folder_root": "FIND_DOCUMENTS"
+  },
+  "notification_settings": {
+    "email_reports": true,
+    "progress_updates": true,
+    "error_notifications": true
+  }
+}
