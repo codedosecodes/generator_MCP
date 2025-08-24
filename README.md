@@ -1,4 +1,4 @@
-﻿# 🚀 DOCFIND - Procesador Inteligente de Correos y Facturas
+﻿# 🚀 DOCUFIND - Procesador Inteligente de Correos y Facturas
 
 Sistema automatizado para procesar correos electrónicos, extraer facturas y organizarlas en Google Drive.
 
