@@ -134,17 +134,21 @@ class EmailProcessor:
             await self.connect()
         
         try:
+            print(f"🔍 Buscando emails del {filters.start_date} al {filters.end_date}")
             logger.info(f"🔍 Buscando emails del {filters.start_date} al {filters.end_date}")
+            print(f"🔍 filtros:",filters)
             
             # Construir criterios de búsqueda IMAP
             search_criteria = self._build_search_criteria(filters)
             logger.debug(f"Criterio de búsqueda: {search_criteria}")
+            print(f"🔍Criterio de búsqueda: {search_criteria}")
             
             # Ejecutar búsqueda
             status, messages = self.connection.search(None, search_criteria)
             
             if status != 'OK':
                 raise Exception(f"Error en búsqueda: {status}")
+           
             
             email_ids = messages[0].split() if messages[0] else []
             logger.info(f"📧 Encontrados {len(email_ids)} emails candidatos")
@@ -216,6 +220,7 @@ class EmailProcessor:
         
         # Criterio combinado
         if criteria_parts:
+            #return f"({' AND '.join(criteria_parts)})"
             return f"({' AND '.join(criteria_parts)})"
         else:
             return 'ALL'
