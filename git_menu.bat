@@ -640,6 +640,9 @@ if /i "%UPDATE_IGNORE%"=="y" (
         echo config/credentials.json
         echo config/token.json
         echo config/config.json
+        echo client_secret*.json
+        echo *.secret.json
+        echo *.env
         echo *.key
         echo *.pem
         echo.
