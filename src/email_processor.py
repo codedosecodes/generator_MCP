@@ -225,11 +225,11 @@ class EmailProcessor:
         # Filtro de fechas
         if date_from:
             date_str = date_from.strftime("%d-%b-%Y")
-            criteria.append(f'SINCE {date_str}')
+            criteria.append(f' SINCE {date_str}')
         
         if date_to:
             date_str = date_to.strftime("%d-%b-%Y")
-            criteria.append(f'BEFORE {date_str}')
+            criteria.append(f' BEFORE {date_str}')
         
         # Filtro de remitentes
         if senders:
@@ -251,7 +251,7 @@ class EmailProcessor:
                 criteria.append(subject_criteria[0])
             else:
                 # Para múltiples keywords, usar OR
-                criteria.append(f'OR {" OR ".join(subject_criteria)}')
+                criteria.append(f' OR {" OR ".join(subject_criteria)}')
         
         # Query adicional
         if query:
@@ -260,11 +260,14 @@ class EmailProcessor:
         # Si no hay criterios, buscar todos
         if not criteria:
             return 'ALL'
-        
+       
         # Combinar criterios
         if len(criteria) == 1:
+            print("1-",criteria[0])
+        
             return criteria[0]
         else:
+            print("2-","".join(criteria))
             return f'({" ".join(criteria)})'
     
     def _fetch_email(self, email_id: bytes) -> Optional[Dict[str, Any]]:

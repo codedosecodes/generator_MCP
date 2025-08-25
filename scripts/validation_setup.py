@@ -21,7 +21,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 try:
     from config_manager import ConfigManager
     from email_processor import EmailProcessor, EmailCredentials,EmailConfig
-    from google_drive_client import GoogleDriveClient, test_google_services,GoogleServicesConfig
+    from google_drive_client import GoogleDriveClient, GoogleServicesConfig
+    from test_google_services import test_google_services
+    
 
 except ImportError as e:
     print(f"❌ Error importando módulos: {e}")
