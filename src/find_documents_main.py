@@ -1,514 +1,616 @@
 #!/usr/bin/env python3
 """
-FIND_DOCUMENTS - Aplicación Principal
-Procesador inteligente de correos y facturas con organización automática en Google Drive
-
-Author: FIND_DOCUMENTS Team
-Version: 1.0.0
+DOCUFIND - Procesador Inteligente de Correos y Facturas
+Punto de entrada principal de la aplicación
 """
 
-import asyncio
+import os
+import sys
 import json
 import logging
-import sys
-import os
+import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-import traceback
+from typing import Dict, List, Optional, Any
+import time
 
-# Importar nuestros módulos
+# Añadir el directorio src al path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 try:
-    from email_processor import EmailProcessor, EmailCredentials, EmailFilter
-    from google_drive_client import GoogleDriveClient
-    from invoice_extractor import InvoiceExtractor
-    from config_manager import ConfigManager
+    from src.email_processor import EmailProcessor
+    from src.google_drive_client import GoogleDriveClient
+    from src.invoice_extractor import InvoiceExtractor
+    from src.config_manager import ConfigManager
 except ImportError as e:
-    print(f"❌ Error importando módulos: {e}")
-    print("💡 Asegúrate de que todos los archivos estén en la carpeta src/")
+    print(f"Error importando módulos: {e}")
+    print("Asegúrate de ejecutar desde el directorio raíz del proyecto")
     sys.exit(1)
 
-# Configurar logging
-def setup_logging():
-    """Configurar sistema de logging"""
+# Configuración de logging
+def setup_logging(log_level: str = "INFO") -> logging.Logger:
+    """Configura el sistema de logging"""
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('logs/find_documents.log', encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ]
+    # Crear formato de log
+    log_format = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
-    return logging.getLogger(__name__)
+    
+    # Logger principal
+    logger = logging.getLogger('DOCUFIND')
+    logger.setLevel(getattr(logging, log_level.upper()))
+    
+    # Handler para archivo
+    file_handler = logging.FileHandler(
+        log_dir / f'docufind_{datetime.now().strftime("%Y%m%d")}.log',
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(log_format)
+    logger.addHandler(file_handler)
+    
+    # Handler para consola
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_format)
+    logger.addHandler(console_handler)
+    
+    return logger
 
-class FindDocumentsApp:
-    """Aplicación principal de FIND_DOCUMENTS"""
+class DocuFindProcessor:
+    """Clase principal para procesar documentos y facturas"""
     
     def __init__(self, config_path: str = "config/config.json"):
+        """
+        Inicializa el procesador de documentos
+        
+        Args:
+            config_path: Ruta al archivo de configuración
+        """
         self.logger = setup_logging()
-        self.config_manager = ConfigManager(config_path)
-        self.config = self.config_manager.load_config()
+        self.logger.info("🚀 Iniciando DOCUFIND - Procesador Inteligente de Correos y Facturas")
+        
+        # Cargar configuración
+        try:
+            self.config_manager = ConfigManager(config_path)
+            self.config = self.config_manager.load_config()
+            self.logger.info("✅ Configuración cargada exitosamente")
+        except Exception as e:
+            self.logger.error(f"❌ Error cargando configuración: {e}")
+            raise
+        
+        # Inicializar componentes
+        self._initialize_components()
         
         # Estadísticas de procesamiento
         self.stats = {
-            'total_emails': 0,
-            'processed_emails': 0,
-            'successful_extractions': 0,
-            'failed_extractions': 0,
-            'total_attachments': 0,
-            'created_folders': 0,
-            'start_time': None,
-            'end_time': None
+            'emails_procesados': 0,
+            'facturas_extraidas': 0,
+            'archivos_subidos': 0,
+            'errores': 0,
+            'tiempo_inicio': None,
+            'tiempo_fin': None
         }
-        
-        # Componentes principales
-        self.email_processor = None
-        self.drive_client = None
-        self.invoice_extractor = None
-        
-        self.logger.info("🚀 FIND_DOCUMENTS iniciado")
     
-    async def initialize_components(self):
-        """Inicializar todos los componentes del sistema"""
+    def _initialize_components(self):
+        """Inicializa los componentes del sistema"""
         try:
-            self.logger.info("🔧 Inicializando componentes...")
-            
-            # 1. Inicializar procesador de email
-            email_creds = EmailCredentials(
-                server=self.config['email_credentials']['server'],
-                port=self.config['email_credentials']['port'],
-                username=self.config['email_credentials']['username'],
-                password=self.config['email_credentials']['password']
+            # Procesador de emails
+            self.email_processor = EmailProcessor(
+                self.config.get('email', {})
             )
-            self.email_processor = EmailProcessor(email_creds)
+            self.logger.info("📧 Procesador de emails inicializado")
             
-            # 2. Inicializar cliente Google Drive
+            # Cliente de Google Drive
             self.drive_client = GoogleDriveClient(
-                credentials_path=self.config['google_services']['credentials_path'],
-                token_path=self.config['google_services']['token_path']
+                credentials_path=self.config.get('google_drive', {}).get('credentials_path'),
+                token_path=self.config.get('google_drive', {}).get('token_path')
             )
-            await self.drive_client.initialize()
+            self.logger.info("📁 Cliente de Google Drive inicializado")
             
-            # 3. Inicializar extractor de facturas
-            self.invoice_extractor = InvoiceExtractor()
-            
-            self.logger.info("✅ Todos los componentes inicializados correctamente")
+            # Extractor de facturas
+            self.invoice_extractor = InvoiceExtractor(
+                self.config.get('extraction', {})
+            )
+            self.logger.info("🤖 Extractor de facturas inicializado")
             
         except Exception as e:
             self.logger.error(f"❌ Error inicializando componentes: {e}")
             raise
     
-    async def run_complete_process(self):
-        """Ejecutar el proceso completo de búsqueda y procesamiento"""
-        try:
-            self.stats['start_time'] = datetime.now()
-            self.logger.info("🎯 Iniciando proceso completo de FIND_DOCUMENTS")
-            
-            # Mostrar configuración
-            self._show_configuration()
-            
-            # Fase 1: Inicializar componentes
-            await self.initialize_components()
-            
-            # Fase 2: Crear estructura en Google Drive
-            project_folder_id = await self._create_drive_structure()
-            
-            # Fase 3: Buscar y procesar correos
-            emails = await self._search_and_filter_emails()
-            
-            if not emails:
-                self.logger.info("ℹ️  No se encontraron correos que cumplan los criterios")
-                return self._generate_final_report()
-            
-            # Fase 4: Crear hoja de cálculo
-            spreadsheet_id = await self._create_tracking_spreadsheet(project_folder_id)
-            
-            # Fase 5: Procesar cada correo
-            processed_data = await self._process_all_emails(emails, project_folder_id)
-            
-            # Fase 6: Actualizar hoja de cálculo
-            await self._update_spreadsheet(spreadsheet_id, processed_data)
-            
-            # Fase 7: Generar reporte final
-            self.stats['end_time'] = datetime.now()
-            final_report = self._generate_final_report()
-            
-            # Fase 8: Enviar notificación (opcional)
-            if self.config.get('notification_settings', {}).get('email_reports', False):
-                await self._send_completion_notification(final_report)
-            
-            self.logger.info("🎉 Proceso completado exitosamente")
-            return final_report
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error en proceso principal: {e}")
-            self.logger.error(traceback.format_exc())
-            raise
-    
-    def _show_configuration(self):
-        """Mostrar configuración actual"""
-        params = self.config['search_parameters']
-        self.logger.info("📋 CONFIGURACIÓN ACTUAL:")
-        self.logger.info(f"  📧 Email: {self.config['email_credentials']['username']}")
-        self.logger.info(f"  📅 Período: {params['start_date']} a {params['end_date']}")
-        self.logger.info(f"  🔍 Palabras clave: {', '.join(params['keywords'])}")
-        self.logger.info(f"  📁 Carpeta destino: {params['folder_name']}")
-    
-    async def _create_drive_structure(self) -> str:
-        """Crear estructura de carpetas en Google Drive"""
-        self.logger.info("📁 Creando estructura en Google Drive...")
+    def process_emails(self, 
+                      date_from: Optional[datetime] = None,
+                      date_to: Optional[datetime] = None,
+                      query: Optional[str] = None,
+                      limit: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Procesa correos electrónicos según los filtros especificados
         
-        try:
-            folder_name = self.config['search_parameters']['folder_name']
-            root_folder = self.config['google_services']['drive_folder_root']
+        Args:
+            date_from: Fecha inicial para buscar correos
+            date_to: Fecha final para buscar correos
+            query: Query adicional para filtrar correos
+            limit: Límite de correos a procesar
             
-            # Crear carpeta raíz FIND_DOCUMENTS
-            root_folder_id = await self.drive_client.create_or_get_folder(root_folder, None)
-            self.stats['created_folders'] += 1
-            
-            # Crear carpeta del proyecto
-            project_folder_id = await self.drive_client.create_or_get_folder(folder_name, root_folder_id)
-            self.stats['created_folders'] += 1
-            
-            self.logger.info(f"✅ Estructura creada: {root_folder}/{folder_name}")
-            return project_folder_id
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error creando estructura Drive: {e}")
-            raise
-    
-    async def _search_and_filter_emails(self) -> List[Dict]:
-        """Buscar y filtrar correos según criterios"""
-        self.logger.info("🔍 Buscando correos...")
+        Returns:
+            Diccionario con resultados del procesamiento
+        """
+        self.stats['tiempo_inicio'] = datetime.now()
+        self.logger.info("=" * 60)
+        self.logger.info("📬 INICIANDO PROCESAMIENTO DE CORREOS")
+        self.logger.info("=" * 60)
         
-        try:
-            # Crear filtro de búsqueda
-            params = self.config['search_parameters']
-            email_filter = EmailFilter(
-                start_date=params['start_date'],
-                end_date=params['end_date'],
-                keywords=params['keywords'],
-                has_attachments=None  # Buscar todos, con y sin adjuntos
-            )
-            
-            # Conectar y buscar
-            await self.email_processor.connect()
-            emails = await self.email_processor.search_emails(email_filter)
-            await self.email_processor.disconnect()
-            
-            self.stats['total_emails'] = len(emails)
-            self.logger.info(f"📧 Encontrados {len(emails)} correos que cumplen criterios")
-            
-            return emails
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error buscando correos: {e}")
-            raise
-    
-    async def _create_tracking_spreadsheet(self, parent_folder_id: str) -> str:
-        """Crear hoja de cálculo para tracking"""
-        self.logger.info("📊 Creando hoja de cálculo de seguimiento...")
+        # Configurar fechas por defecto
+        if not date_from:
+            date_from = datetime.now() - timedelta(days=30)
+        if not date_to:
+            date_to = datetime.now()
         
-        try:
-            folder_name = self.config['search_parameters']['folder_name']
-            spreadsheet_name = f"{folder_name}_Documentos_Procesados"
-            
-            # Headers para la hoja de cálculo
-            headers = [
-                'Fecha Correo', 'From', 'To', 'Subject', 'Tiene Adjuntos',
-                'Ruta Adjuntos', 'Valor Factura', 'Concepto', 'Quien Facturo',
-                'ID Correo', 'Fecha Procesamiento', 'Estado', 'Observaciones'
-            ]
-            
-            spreadsheet_id = await self.drive_client.create_spreadsheet(
-                spreadsheet_name, 
-                parent_folder_id, 
-                headers
-            )
-            
-            self.logger.info(f"✅ Hoja de cálculo creada: {spreadsheet_id}")
-            return spreadsheet_id
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error creando hoja de cálculo: {e}")
-            raise
-    
-    async def _process_all_emails(self, emails: List[Dict], project_folder_id: str) -> List[Dict]:
-        """Procesar todos los correos encontrados"""
-        processed_data = []
-        total = len(emails)
+        self.logger.info(f"📅 Periodo: {date_from.strftime('%Y-%m-%d')} a {date_to.strftime('%Y-%m-%d')}")
         
-        self.logger.info(f"⚙️  Procesando {total} correos...")
-        
-        for idx, email_data in enumerate(emails):
-            try:
-                # Mostrar progreso
-                progress = (idx + 1) / total * 100
-                self.logger.info(f"📊 Procesando {idx + 1}/{total} ({progress:.1f}%)")
-                
-                # Procesar email individual
-                processed_email = await self._process_single_email(
-                    email_data, 
-                    project_folder_id,
-                    idx + 1
-                )
-                
-                processed_data.append(processed_email)
-                self.stats['processed_emails'] += 1
-                self.stats['successful_extractions'] += 1
-                
-            except Exception as e:
-                self.logger.error(f"❌ Error procesando email {idx + 1}: {e}")
-                
-                # Agregar registro de error
-                error_record = {
-                    'fecha_correo': email_data.get('date', ''),
-                    'from': email_data.get('from_addr', ''),
-                    'to': email_data.get('to_addr', ''),
-                    'subject': email_data.get('subject', ''),
-                    'estado': 'ERROR',
-                    'observaciones': str(e)
-                }
-                processed_data.append(error_record)
-                
-                self.stats['processed_emails'] += 1
-                self.stats['failed_extractions'] += 1
-                continue
-        
-        self.logger.info(f"✅ Procesamiento completado: {self.stats['successful_extractions']} exitosos, {self.stats['failed_extractions']} fallidos")
-        return processed_data
-    
-    async def _process_single_email(self, email_data: Dict, project_folder_id: str, email_number: int) -> Dict:
-        """Procesar un email individual"""
-        try:
-            # Parsear fecha del correo
-            email_date = email_data['raw_date']
-            
-            # Crear estructura de carpetas para adjuntos si existen
-            attachment_path = ""
-            if email_data['has_attachments']:
-                attachment_path = await self._organize_attachments(
-                    email_data, 
-                    project_folder_id, 
-                    email_date
-                )
-                self.stats['total_attachments'] += len(email_data['attachments'])
-            
-            # Extraer datos de factura usando IA
-            invoice_data = await self.invoice_extractor.extract_invoice_data(
-                email_content=email_data['content'],
-                attachments=email_data['attachments']
-            )
-            
-            # Preparar datos para hoja de cálculo
-            processed_data = {
-                'fecha_correo': email_date.strftime('%Y-%m-%d %H:%M:%S'),
-                'from': email_data['from_addr'][:100],  # Limitar longitud
-                'to': email_data['to_addr'][:100],
-                'subject': email_data['subject'][:150],
-                'tiene_adjuntos': 'Sí' if email_data['has_attachments'] else 'No',
-                'ruta_adjuntos': attachment_path,
-                'valor_factura': invoice_data.get('amount', ''),
-                'concepto': invoice_data.get('concept', '')[:200],
-                'quien_facturo': invoice_data.get('vendor', '')[:100],
-                'id_correo': email_data['id'],
-                'fecha_procesamiento': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'estado': 'PROCESADO',
-                'observaciones': f"Confianza: {invoice_data.get('confidence', 0):.0%}"
-            }
-            
-            return processed_data
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error en procesamiento individual: {e}")
-            raise
-    
-    async def _organize_attachments(self, email_data: Dict, project_folder_id: str, email_date: datetime) -> str:
-        """Organizar adjuntos en estructura jerárquica"""
-        try:
-            # Crear estructura año/mes/email_id
-            year_folder_id = await self.drive_client.create_or_get_folder(
-                str(email_date.year), 
-                project_folder_id
-            )
-            
-            month_folder_id = await self.drive_client.create_or_get_folder(
-                f"{email_date.month:02d}_{email_date.strftime('%B')}", 
-                year_folder_id
-            )
-            
-            email_folder_id = await self.drive_client.create_or_get_folder(
-                f"Email_{email_data['id']}", 
-                month_folder_id
-            )
-            
-            # Subir adjuntos
-            uploaded_files = []
-            for attachment in email_data['attachments']:
-                try:
-                    file_id = await self.drive_client.upload_file(
-                        attachment['content'],
-                        attachment['filename'],
-                        email_folder_id,
-                        attachment['content_type']
-                    )
-                    uploaded_files.append(attachment['filename'])
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️  Error subiendo {attachment['filename']}: {e}")
-            
-            folder_name = self.config['search_parameters']['folder_name']
-            attachment_path = f"FIND_DOCUMENTS/{folder_name}/{email_date.year}/{email_date.month:02d}/Email_{email_data['id']}"
-            
-            self.stats['created_folders'] += 3  # año, mes, email
-            
-            return attachment_path
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error organizando adjuntos: {e}")
-            return f"ERROR: {str(e)}"
-    
-    async def _update_spreadsheet(self, spreadsheet_id: str, processed_data: List[Dict]):
-        """Actualizar hoja de cálculo con datos procesados"""
-        self.logger.info("📊 Actualizando hoja de cálculo...")
-        
-        try:
-            # Preparar datos para inserción
-            rows_data = []
-            for item in processed_data:
-                row = [
-                    item.get('fecha_correo', ''),
-                    item.get('from', ''),
-                    item.get('to', ''),
-                    item.get('subject', ''),
-                    item.get('tiene_adjuntos', ''),
-                    item.get('ruta_adjuntos', ''),
-                    str(item.get('valor_factura', '')),
-                    item.get('concepto', ''),
-                    item.get('quien_facturo', ''),
-                    item.get('id_correo', ''),
-                    item.get('fecha_procesamiento', ''),
-                    item.get('estado', ''),
-                    item.get('observaciones', '')
-                ]
-                rows_data.append(row)
-            
-            # Insertar datos
-            await self.drive_client.append_to_spreadsheet(spreadsheet_id, rows_data)
-            
-            self.logger.info(f"✅ Hoja actualizada con {len(rows_data)} registros")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error actualizando hoja de cálculo: {e}")
-            raise
-    
-    def _generate_final_report(self) -> Dict:
-        """Generar reporte final del procesamiento"""
-        duration = None
-        if self.stats['start_time'] and self.stats['end_time']:
-            duration = self.stats['end_time'] - self.stats['start_time']
-        
-        success_rate = 0
-        if self.stats['processed_emails'] > 0:
-            success_rate = (self.stats['successful_extractions'] / self.stats['processed_emails']) * 100
-        
-        report = {
-            'timestamp': datetime.now().isoformat(),
-            'configuration': {
-                'folder_name': self.config['search_parameters']['folder_name'],
-                'date_range': f"{self.config['search_parameters']['start_date']} - {self.config['search_parameters']['end_date']}",
-                'keywords': self.config['search_parameters']['keywords']
-            },
-            'statistics': {
-                'total_emails_found': self.stats['total_emails'],
-                'emails_processed': self.stats['processed_emails'],
-                'successful_extractions': self.stats['successful_extractions'],
-                'failed_extractions': self.stats['failed_extractions'],
-                'total_attachments': self.stats['total_attachments'],
-                'folders_created': self.stats['created_folders'],
-                'success_rate_percent': round(success_rate, 1),
-                'processing_duration': str(duration) if duration else 'N/A'
-            },
-            'status': 'COMPLETED' if self.stats['failed_extractions'] == 0 else 'COMPLETED_WITH_ERRORS'
+        results = {
+            'success': [],
+            'failed': [],
+            'summary': {}
         }
         
-        # Logging del reporte
-        self.logger.info("📋 REPORTE FINAL:")
-        self.logger.info(f"  📧 Correos encontrados: {report['statistics']['total_emails_found']}")
-        self.logger.info(f"  ✅ Procesados exitosamente: {report['statistics']['successful_extractions']}")
-        self.logger.info(f"  ❌ Errores: {report['statistics']['failed_extractions']}")
-        self.logger.info(f"  📎 Adjuntos procesados: {report['statistics']['total_attachments']}")
-        self.logger.info(f"  📁 Carpetas creadas: {report['statistics']['folders_created']}")
-        self.logger.info(f"  🎯 Tasa de éxito: {report['statistics']['success_rate_percent']}%")
-        if duration:
-            self.logger.info(f"  ⏱️  Duración: {duration}")
-        
-        return report
-    
-    async def _send_completion_notification(self, report: Dict):
-        """Enviar notificación de finalización por email"""
         try:
-            self.logger.info("📬 Enviando notificación de finalización...")
+            # Paso 1: Buscar correos
+            self.logger.info("\n📧 PASO 1: Buscando correos...")
+            search_params = self._build_search_params(date_from, date_to, query)
+            emails = self.email_processor.search_emails(**search_params)
             
-            # Aquí podrías implementar envío de email con los resultados
-            # Por ahora solo registramos que se enviaría
+            if not emails:
+                self.logger.warning("⚠️ No se encontraron correos con los criterios especificados")
+                return results
             
-            self.logger.info("✅ Notificación enviada")
+            self.logger.info(f"✅ Se encontraron {len(emails)} correos")
+            
+            # Aplicar límite si se especificó
+            if limit and limit > 0:
+                emails = emails[:limit]
+                self.logger.info(f"📊 Procesando los primeros {limit} correos")
+            
+            # Paso 2: Procesar cada correo
+            self.logger.info("\n🔄 PASO 2: Procesando correos...")
+            for idx, email in enumerate(emails, 1):
+                self._process_single_email(email, idx, len(emails), results)
+            
+            # Paso 3: Generar reporte
+            self.logger.info("\n📊 PASO 3: Generando reporte...")
+            self._generate_report(results)
+            
+            # Paso 4: Enviar notificación si está configurado
+            if self.config.get('notifications', {}).get('enabled', False):
+                self.logger.info("\n📬 PASO 4: Enviando notificación...")
+                self._send_notification(results)
             
         except Exception as e:
-            self.logger.warning(f"⚠️  No se pudo enviar notificación: {e}")
+            self.logger.error(f"❌ Error durante el procesamiento: {e}")
+            self.stats['errores'] += 1
+            raise
+        finally:
+            self.stats['tiempo_fin'] = datetime.now()
+            self._print_summary()
+        
+        return results
+    
+    def _build_search_params(self, date_from: datetime, date_to: datetime, query: Optional[str]) -> Dict:
+        """Construye los parámetros de búsqueda para correos"""
+        params = {
+            'date_from': date_from,
+            'date_to': date_to
+        }
+        
+        # Agregar query adicional si existe
+        if query:
+            params['query'] = query
+        
+        # Agregar filtros de configuración
+        email_config = self.config.get('email', {})
+        if 'senders' in email_config:
+            params['senders'] = email_config['senders']
+        if 'subject_filters' in email_config:
+            params['subject_filters'] = email_config['subject_filters']
+        if 'has_attachments' in email_config:
+            params['has_attachments'] = email_config['has_attachments']
+        
+        return params
+    
+    def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
+        """Procesa un correo individual"""
+        try:
+            self.logger.info(f"\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
+            self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
+            self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
+            
+            self.stats['emails_procesados'] += 1
+            
+            # Extraer adjuntos
+            attachments = self.email_processor.get_attachments(email['id'])
+            
+            if not attachments:
+                self.logger.info("  ⚠️ No se encontraron adjuntos")
+                return
+            
+            self.logger.info(f"  📎 {len(attachments)} adjuntos encontrados")
+            
+            # Procesar cada adjunto
+            for attachment in attachments:
+                self._process_attachment(email, attachment, results)
+            
+            results['success'].append({
+                'email_id': email['id'],
+                'subject': email.get('subject'),
+                'sender': email.get('sender'),
+                'date': email.get('date'),
+                'attachments_processed': len(attachments)
+            })
+            
+        except Exception as e:
+            self.logger.error(f"  ❌ Error procesando correo: {e}")
+            self.stats['errores'] += 1
+            results['failed'].append({
+                'email_id': email.get('id'),
+                'subject': email.get('subject'),
+                'error': str(e)
+            })
+    
+    def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
+        """Procesa un adjunto individual"""
+        try:
+            filename = attachment.get('filename', 'archivo_sin_nombre')
+            self.logger.info(f"    📄 Procesando: {filename}")
+            
+            # Verificar si es una factura
+            if self._is_invoice(filename):
+                # Extraer datos de la factura
+                invoice_data = self.invoice_extractor.extract(attachment['content'])
+                
+                if invoice_data:
+                    self.logger.info(f"      ✅ Datos extraídos: {invoice_data.get('invoice_number', 'N/A')}")
+                    self.stats['facturas_extraidas'] += 1
+                    
+                    # Organizar en Google Drive
+                    self._organize_in_drive(email, attachment, invoice_data)
+                else:
+                    self.logger.warning(f"      ⚠️ No se pudieron extraer datos")
+            else:
+                # Subir archivo tal cual
+                self._upload_to_drive(email, attachment)
+            
+        except Exception as e:
+            self.logger.error(f"    ❌ Error procesando adjunto: {e}")
+            self.stats['errores'] += 1
+    
+    def _is_invoice(self, filename: str) -> bool:
+        """Determina si un archivo es una factura"""
+        invoice_keywords = ['factura', 'invoice', 'bill', 'receipt', 'recibo']
+        invoice_extensions = ['.pdf', '.xml', '.xlsx', '.xls']
+        
+        filename_lower = filename.lower()
+        
+        # Verificar palabras clave
+        has_keyword = any(keyword in filename_lower for keyword in invoice_keywords)
+        
+        # Verificar extensión
+        has_valid_extension = any(filename_lower.endswith(ext) for ext in invoice_extensions)
+        
+        return has_keyword or has_valid_extension
+    
+    def _organize_in_drive(self, email: Dict, attachment: Dict, invoice_data: Dict):
+        """Organiza una factura en Google Drive"""
+        try:
+            # Crear estructura de carpetas basada en fecha
+            date = datetime.strptime(email.get('date', ''), '%Y-%m-%d')
+            folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Facturas"
+            
+            # Crear carpetas si no existen
+            folder_id = self.drive_client.create_folder_path(folder_path)
+            
+            # Renombrar archivo con datos de factura
+            new_filename = self._generate_filename(invoice_data, attachment['filename'])
+            
+            # Subir archivo
+            file_id = self.drive_client.upload_file(
+                attachment['content'],
+                new_filename,
+                folder_id,
+                invoice_data
+            )
+            
+            if file_id:
+                self.logger.info(f"      ✅ Subido a Drive: {new_filename}")
+                self.stats['archivos_subidos'] += 1
+                
+                # Actualizar hoja de cálculo
+                self._update_spreadsheet(invoice_data, file_id)
+            
+        except Exception as e:
+            self.logger.error(f"      ❌ Error organizando en Drive: {e}")
+            raise
+    
+    def _upload_to_drive(self, email: Dict, attachment: Dict):
+        """Sube un archivo no-factura a Google Drive"""
+        try:
+            # Crear estructura básica de carpetas
+            date = datetime.strptime(email.get('date', ''), '%Y-%m-%d')
+            folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Otros"
+            
+            # Crear carpetas si no existen
+            folder_id = self.drive_client.create_folder_path(folder_path)
+            
+            # Subir archivo
+            file_id = self.drive_client.upload_file(
+                attachment['content'],
+                attachment['filename'],
+                folder_id
+            )
+            
+            if file_id:
+                self.logger.info(f"      ✅ Subido a Drive: {attachment['filename']}")
+                self.stats['archivos_subidos'] += 1
+            
+        except Exception as e:
+            self.logger.error(f"      ❌ Error subiendo a Drive: {e}")
+            raise
+    
+    def _generate_filename(self, invoice_data: Dict, original_filename: str) -> str:
+        """Genera un nombre de archivo descriptivo para la factura"""
+        parts = []
+        
+        # Fecha
+        if invoice_data.get('date'):
+            parts.append(invoice_data['date'].replace('/', '-'))
+        
+        # Proveedor
+        if invoice_data.get('vendor'):
+            parts.append(invoice_data['vendor'].replace(' ', '_')[:20])
+        
+        # Número de factura
+        if invoice_data.get('invoice_number'):
+            parts.append(f"F{invoice_data['invoice_number']}")
+        
+        # Total
+        if invoice_data.get('total'):
+            parts.append(f"${invoice_data['total']}")
+        
+        # Si no hay datos, usar nombre original
+        if not parts:
+            return original_filename
+        
+        # Obtener extensión
+        extension = os.path.splitext(original_filename)[1]
+        
+        return f"{'_'.join(parts)}{extension}"
+    
+    def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
+        """Actualiza la hoja de cálculo con los datos de la factura"""
+        try:
+            # Buscar o crear hoja de cálculo
+            spreadsheet_id = self.drive_client.get_or_create_spreadsheet(
+                "DOCUFIND_Facturas_2024"
+            )
+            
+            # Preparar fila de datos
+            row_data = [
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                invoice_data.get('date', ''),
+                invoice_data.get('vendor', ''),
+                invoice_data.get('invoice_number', ''),
+                invoice_data.get('subtotal', ''),
+                invoice_data.get('tax', ''),
+                invoice_data.get('total', ''),
+                invoice_data.get('currency', 'MXN'),
+                invoice_data.get('payment_method', ''),
+                invoice_data.get('status', 'Procesado'),
+                f"https://drive.google.com/file/d/{file_id}/view"
+            ]
+            
+            # Agregar fila a la hoja
+            self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data)
+            self.logger.info(f"        ✅ Datos agregados a hoja de cálculo")
+            
+        except Exception as e:
+            self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
+    
+    def _generate_report(self, results: Dict):
+        """Genera un reporte del procesamiento"""
+        try:
+            report = {
+                'fecha_procesamiento': datetime.now().isoformat(),
+                'estadisticas': self.stats,
+                'exitosos': len(results['success']),
+                'fallidos': len(results['failed']),
+                'detalles': results
+            }
+            
+            # Guardar reporte en JSON
+            report_path = Path('logs') / f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(report_path, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2, ensure_ascii=False, default=str)
+            
+            self.logger.info(f"📊 Reporte guardado en: {report_path}")
+            
+            # Subir reporte a Drive si está configurado
+            if self.config.get('reports', {}).get('upload_to_drive', False):
+                self._upload_report_to_drive(report_path)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error generando reporte: {e}")
+    
+    def _upload_report_to_drive(self, report_path: Path):
+        """Sube el reporte a Google Drive"""
+        try:
+            folder_path = f"DOCUFIND/Reportes/{datetime.now().year}"
+            folder_id = self.drive_client.create_folder_path(folder_path)
+            
+            with open(report_path, 'rb') as f:
+                file_id = self.drive_client.upload_file(
+                    f.read(),
+                    report_path.name,
+                    folder_id
+                )
+            
+            if file_id:
+                self.logger.info(f"✅ Reporte subido a Drive")
+        except Exception as e:
+            self.logger.error(f"⚠️ Error subiendo reporte a Drive: {e}")
+    
+    def _send_notification(self, results: Dict):
+        """Envía notificación por email del procesamiento"""
+        try:
+            subject = f"DOCUFIND - Procesamiento Completado - {datetime.now().strftime('%Y-%m-%d')}"
+            
+            body = f"""
+            <html>
+            <body>
+                <h2>🚀 DOCUFIND - Reporte de Procesamiento</h2>
+                
+                <h3>📊 Estadísticas:</h3>
+                <ul>
+                    <li>📧 Correos procesados: {self.stats['emails_procesados']}</li>
+                    <li>📄 Facturas extraídas: {self.stats['facturas_extraidas']}</li>
+                    <li>☁️ Archivos subidos: {self.stats['archivos_subidos']}</li>
+                    <li>❌ Errores: {self.stats['errores']}</li>
+                </ul>
+                
+                <h3>✅ Procesados exitosamente: {len(results['success'])}</h3>
+                <h3>❌ Fallidos: {len(results['failed'])}</h3>
+                
+                <p>Tiempo de procesamiento: {self._calculate_duration()}</p>
+                
+                <hr>
+                <p><small>Este es un mensaje automático de DOCUFIND</small></p>
+            </body>
+            </html>
+            """
+            
+            recipients = self.config.get('notifications', {}).get('recipients', [])
+            for recipient in recipients:
+                self.email_processor.send_notification(recipient, subject, body)
+                self.logger.info(f"📬 Notificación enviada a: {recipient}")
+            
+        except Exception as e:
+            self.logger.error(f"⚠️ Error enviando notificación: {e}")
+    
+    def _calculate_duration(self) -> str:
+        """Calcula la duración del procesamiento"""
+        if self.stats['tiempo_inicio'] and self.stats['tiempo_fin']:
+            duration = self.stats['tiempo_fin'] - self.stats['tiempo_inicio']
+            minutes, seconds = divmod(duration.total_seconds(), 60)
+            return f"{int(minutes)} minutos, {int(seconds)} segundos"
+        return "N/A"
+    
+    def _print_summary(self):
+        """Imprime resumen del procesamiento"""
+        self.logger.info("\n" + "=" * 60)
+        self.logger.info("📊 RESUMEN DE PROCESAMIENTO")
+        self.logger.info("=" * 60)
+        self.logger.info(f"📧 Correos procesados: {self.stats['emails_procesados']}")
+        self.logger.info(f"📄 Facturas extraídas: {self.stats['facturas_extraidas']}")
+        self.logger.info(f"☁️ Archivos subidos: {self.stats['archivos_subidos']}")
+        self.logger.info(f"❌ Errores encontrados: {self.stats['errores']}")
+        self.logger.info(f"⏱️ Duración: {self._calculate_duration()}")
+        self.logger.info("=" * 60)
+        
+        if self.stats['errores'] == 0:
+            self.logger.info("✅ ¡Procesamiento completado exitosamente!")
+        else:
+            self.logger.warning(f"⚠️ Procesamiento completado con {self.stats['errores']} errores")
 
-# Función principal
-async def main():
-    """Función principal de la aplicación"""
+def main():
+    """Función principal"""
+    parser = argparse.ArgumentParser(
+        description='DOCUFIND - Procesador Inteligente de Correos y Facturas',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Ejemplos de uso:
+  python find_documents_main.py                     # Procesar últimos 30 días
+  python find_documents_main.py --days 7            # Procesar últimos 7 días
+  python find_documents_main.py --from 2024-01-01 --to 2024-01-31
+  python find_documents_main.py --query "factura"   # Buscar correos con "factura"
+  python find_documents_main.py --limit 10          # Procesar solo 10 correos
+  python find_documents_main.py --test              # Modo de prueba
+        """
+    )
+    
+    # Argumentos de fecha
+    parser.add_argument('--from', '--date-from', dest='date_from',
+                       help='Fecha inicial (YYYY-MM-DD)')
+    parser.add_argument('--to', '--date-to', dest='date_to',
+                       help='Fecha final (YYYY-MM-DD)')
+    parser.add_argument('--days', type=int,
+                       help='Procesar últimos N días')
+    
+    # Argumentos de filtrado
+    parser.add_argument('--query', '-q',
+                       help='Query de búsqueda adicional')
+    parser.add_argument('--limit', '-l', type=int,
+                       help='Límite de correos a procesar')
+    
+    # Argumentos de configuración
+    parser.add_argument('--config', '-c', default='config/config.json',
+                       help='Ruta al archivo de configuración')
+    parser.add_argument('--test', action='store_true',
+                       help='Ejecutar en modo de prueba (no hace cambios)')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Mostrar información detallada')
+    
+    args = parser.parse_args()
+    
     try:
-        print("🚀 Iniciando FIND_DOCUMENTS - Procesador de Correos y Facturas")
-        print("=" * 70)
+        # Configurar fechas
+        date_from = None
+        date_to = datetime.now()
         
-        # Crear e inicializar aplicación
-        app = FindDocumentsApp()
+        if args.date_from:
+            date_from = datetime.strptime(args.date_from, '%Y-%m-%d')
+        elif args.days:
+            date_from = datetime.now() - timedelta(days=args.days)
+        else:
+            date_from = datetime.now() - timedelta(days=30)
         
-        # Ejecutar proceso completo
-        result = await app.run_complete_process()
+        if args.date_to:
+            date_to = datetime.strptime(args.date_to, '%Y-%m-%d')
         
-        print("\n" + "=" * 70)
-        print("🎉 PROCESAMIENTO COMPLETADO")
-        print("=" * 70)
+        # Modo de prueba
+        if args.test:
+            print("🧪 MODO DE PRUEBA ACTIVADO - No se realizarán cambios")
+            print(f"  Periodo: {date_from.strftime('%Y-%m-%d')} a {date_to.strftime('%Y-%m-%d')}")
+            print(f"  Query: {args.query or 'Sin filtro adicional'}")
+            print(f"  Límite: {args.limit or 'Sin límite'}")
+            response = input("\n¿Continuar? (s/n): ")
+            if response.lower() != 's':
+                print("Operación cancelada")
+                return
         
-        # Mostrar resumen
-        stats = result['statistics']
-        print(f"📧 Correos procesados: {stats['emails_processed']}")
-        print(f"✅ Extracciones exitosas: {stats['successful_extractions']}")
-        print(f"📎 Adjuntos organizados: {stats['total_attachments']}")
-        print(f"🎯 Tasa de éxito: {stats['success_rate_percent']}%")
+        # Crear y ejecutar procesador
+        processor = DocuFindProcessor(args.config)
         
-        # Guardar reporte
-        report_path = Path("logs") / f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(report_path, 'w', encoding='utf-8') as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
+        results = processor.process_emails(
+            date_from=date_from,
+            date_to=date_to,
+            query=args.query,
+            limit=args.limit
+        )
         
-        print(f"📄 Reporte guardado: {report_path}")
-        print("\n🔗 Revisa tu Google Drive para ver los documentos organizados")
-        
-        return result
-        
+        # Código de salida basado en errores
+        if processor.stats['errores'] > 0:
+            sys.exit(1)
+        else:
+            sys.exit(0)
+            
     except KeyboardInterrupt:
-        print("\n⚠️  Proceso interrumpido por el usuario")
-        return None
+        print("\n\n⚠️ Procesamiento interrumpido por el usuario")
+        sys.exit(130)
     except Exception as e:
-        print(f"\n❌ Error crítico: {e}")
-        print("\n🔍 Ver logs/find_documents.log para más detalles")
-        return None
+        print(f"\n❌ Error fatal: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # Ejecutar aplicación
-    result = asyncio.run(main())
-    
-    if result:
-        print("\n✨ ¡Aplicación ejecutada exitosamente!")
-    else:
-        print("\n💥 La aplicación terminó con errores")
-        sys.exit(1)
+    main()

@@ -1,5 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Invoice Extractor - FIND_DOCUMENTS
+Invoice Extractor - DOCUFIND
 Extrae datos inteligentes de facturas de emails y adjuntos
 """
 
@@ -9,7 +11,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -27,48 +29,61 @@ class InvoiceData:
     tax_id: Optional[str] = None
     confidence: float = 0.0
     extraction_method: str = ""
-    raw_matches: Dict[str, Any] = None
+    raw_matches: Dict[str, Any] = field(default_factory=dict)
 
 class InvoiceExtractor:
     """Extractor inteligente de datos de facturas"""
     
-    def __init__(self):
+    def __init__(self, config: Optional[Dict] = None):
+        """
+        Inicializa el extractor de facturas
+        
+        Args:
+            config: Configuración opcional del extractor
+        """
+        self.config = config or {}
+        
         # Patrones de regex para diferentes tipos de datos
         self.patterns = self._initialize_patterns()
         
         # Palabras clave para categorización
         self.category_keywords = self._initialize_categories()
         
-        # Configuración de monedas
+        # Configuración de monedas - usando códigos ASCII y Unicode escapados
         self.currency_symbols = {
             '$': 'USD',
-            '€': 'EUR', 
-            '£': 'GBP',
-            '¥': 'JPY',
+            '\u20AC': 'EUR',  # Euro symbol
+            '\u00A3': 'GBP',  # Pound symbol
+            '\u00A5': 'JPY',  # Yen symbol
             'COP': 'COP',
-            'MXN': 'MXN'
+            'MXN': 'MXN',
+            'ARS': 'ARS',
+            'PEN': 'PEN',
+            'CLP': 'CLP'
         }
         
-        logger.info("💡 InvoiceExtractor inicializado")
+        logger.info("🤖 InvoiceExtractor inicializado")
     
     def _initialize_patterns(self) -> Dict[str, List[str]]:
         """Inicializa patrones de regex para extracción"""
+        # Usando caracteres Unicode escapados para símbolos de moneda
+        currency_pattern = r'[\$\u20AC\u00A3\u00A5]'
+        
         return {
             'amount': [
                 # Montos con símbolos de moneda
-                r'total:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
-                r'amount:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
-                r'importe:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
-                r'valor:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
-                r'subtotal:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
+                rf'total:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
+                rf'amount:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
+                rf'importe:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
+                rf'valor:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
+                rf'subtotal:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
                 # Patrones específicos por moneda
                 r'\$\s*([0-9]{1,3}(?:,\d{3})*(?:\.\d{2})?)',
-                r'€\s*([0-9]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)',
-                r'([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)\s*(?:USD|EUR|GBP|COP|MXN)',
+                r'([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)\s*(?:USD|EUR|GBP|COP|MXN|ARS)',
                 # Patrones en español
-                r'pagar:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
-                r'cobrar:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)',
-                r'facturar:?\s*[\$€£¥]?\s*([0-9]{1,3}(?:[,.]?\d{3})*(?:[,.]?\d{2})?)'
+                rf'pagar:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
+                rf'cobrar:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)',
+                rf'facturar:?\s*{currency_pattern}?\s*([0-9]{{1,3}}(?:[,.]?\d{{3}})*(?:[,.]?\d{{2}})?)'
             ],
             'vendor': [
                 # Información del proveedor
@@ -108,7 +123,9 @@ class InvoiceExtractor:
                 r'factura\s*(?:no\.?|número|#)?:?\s*([A-Z0-9-]+)',
                 r'invoice\s*(?:no\.?|number|#)?:?\s*([A-Z0-9-]+)',
                 r'bill\s*(?:no\.?|number|#)?:?\s*([A-Z0-9-]+)',
-                r'(?:ref|reference)(?:\s*no\.?|:)?\s*([A-Z0-9-]+)'
+                r'(?:ref|reference)(?:\s*no\.?|:)?\s*([A-Z0-9-]+)',
+                r'#\s*([A-Z0-9-]+)',
+                r'folio:?\s*([A-Z0-9-]+)'
             ],
             'invoice_date': [
                 # Fecha de factura
@@ -122,146 +139,147 @@ class InvoiceExtractor:
                 # Fecha de vencimiento
                 r'(?:due|vencimiento|vence)\s+(?:date)?:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
                 r'(?:pay\s+by|pagar\s+antes):?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-                r'(?:payment\s+due|vencimiento):?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
+                r'(?:payment\s+due|fecha\s+límite):?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
+            ],
+            'tax': [
+                # Impuestos
+                r'(?:tax|iva|impuesto):?\s*([0-9]+(?:[.,]\d{2})?)',
+                r'(?:vat|igv):?\s*([0-9]+(?:[.,]\d{2})?)',
+                r'(?:taxes|impuestos):?\s*([0-9]+(?:[.,]\d{2})?)'
             ],
             'tax_id': [
-                # Números de identificación fiscal
-                r'(?:nit|tax\s+id|rfc):?\s*([0-9-]+)',
-                r'(?:cuit|cuil):?\s*([0-9-]+)',
-                r'(?:rut):?\s*([0-9.-]+)',
-                r'(?:ein):?\s*([0-9-]+)'
+                # Identificación fiscal
+                r'(?:rfc|nit|rut|cuit|ruc):?\s*([A-Z0-9-]+)',
+                r'(?:tax\s+id|id\s+fiscal):?\s*([A-Z0-9-]+)',
+                r'(?:vat\s+number|número\s+fiscal):?\s*([A-Z0-9-]+)'
             ]
         }
     
     def _initialize_categories(self) -> Dict[str, List[str]]:
         """Inicializa palabras clave para categorización"""
         return {
-            'utilities': [
-                'electric', 'electricity', 'gas', 'water', 'internet', 'phone', 'mobile',
-                'eléctrico', 'electricidad', 'agua', 'teléfono', 'móvil', 'celular'
-            ],
-            'office_supplies': [
-                'staples', 'office', 'depot', 'supplies', 'paper', 'printer',
-                'suministros', 'oficina', 'papel', 'impresora', 'útiles'
-            ],
-            'software': [
-                'microsoft', 'adobe', 'google', 'aws', 'azure', 'office', 'license',
-                'software', 'subscription', 'saas', 'licencia', 'suscripción'
-            ],
-            'services': [
-                'consulting', 'legal', 'accounting', 'marketing', 'design', 'development',
-                'consultoría', 'legal', 'contabilidad', 'mercadeo', 'diseño', 'desarrollo'
-            ],
-            'hosting': [
-                'hosting', 'domain', 'server', 'cloud', 'vps', 'dedicated',
-                'dominio', 'servidor', 'nube', 'alojamiento'
-            ],
-            'transportation': [
-                'uber', 'taxi', 'transport', 'fuel', 'gas', 'parking',
-                'transporte', 'combustible', 'gasolina', 'estacionamiento'
-            ]
+            'utilities': ['electricidad', 'gas', 'agua', 'electricity', 'water', 'power', 'utility'],
+            'telecommunications': ['internet', 'telefono', 'phone', 'mobile', 'banda ancha', 'broadband'],
+            'software': ['software', 'licencia', 'license', 'subscription', 'suscripcion', 'app'],
+            'hosting': ['hosting', 'servidor', 'server', 'dominio', 'domain', 'cloud', 'web'],
+            'office': ['oficina', 'office', 'papeleria', 'supplies', 'material'],
+            'transport': ['transporte', 'transport', 'envio', 'shipping', 'delivery', 'entrega'],
+            'food': ['comida', 'food', 'restaurante', 'restaurant', 'cafe', 'almuerzo', 'lunch'],
+            'professional': ['servicios', 'services', 'consultoria', 'consulting', 'professional'],
+            'rent': ['renta', 'rent', 'alquiler', 'lease', 'arrendamiento'],
+            'insurance': ['seguro', 'insurance', 'poliza', 'policy'],
+            'financial': ['banco', 'bank', 'credito', 'credit', 'prestamo', 'loan'],
+            'miscellaneous': ['otros', 'other', 'misc', 'general']
         }
     
-    async def extract_invoice_data(self, email_content: str, attachments: List[Dict] = None) -> Dict[str, Any]:
-        """Extrae datos de factura del contenido del email y adjuntos"""
+    def extract(self, content: Any) -> Optional[Dict[str, Any]]:
+        """
+        Extrae datos de factura del contenido
+        
+        Args:
+            content: Contenido a procesar (texto, bytes, o dict)
+            
+        Returns:
+            Diccionario con datos extraídos o None
+        """
         try:
-            logger.info("🔍 Iniciando extracción de datos de factura")
+            # Convertir contenido a texto si es necesario
+            text = self._content_to_text(content)
             
-            # Combinar todo el texto disponible
-            full_text = email_content
-            
-            # Procesar adjuntos si existen
-            if attachments:
-                for attachment in attachments:
-                    attachment_text = await self._extract_text_from_attachment(attachment)
-                    if attachment_text:
-                        full_text += f"\n\n--- ADJUNTO: {attachment['filename']} ---\n{attachment_text}"
+            if not text:
+                logger.warning("⚠️ No se pudo obtener texto del contenido")
+                return None
             
             # Extraer datos usando patrones
-            extracted_data = self._extract_using_patterns(full_text)
+            extracted_data = self._extract_with_patterns(text)
             
-            # Mejorar extracción con análisis contextual
-            enhanced_data = self._enhance_with_context(extracted_data, full_text)
-            
-            # Categorizar el tipo de factura
-            category = self._categorize_invoice(enhanced_data, full_text)
-            enhanced_data['category'] = category
+            # Mejorar datos con análisis contextual
+            enhanced_data = self._enhance_with_context(extracted_data, text)
             
             # Calcular confianza
-            confidence = self._calculate_confidence(enhanced_data, full_text)
-            enhanced_data['confidence'] = confidence
+            enhanced_data['confidence'] = self._calculate_confidence(enhanced_data)
             
-            # Metadatos de extracción
-            enhanced_data['extraction_method'] = 'pattern_matching'
-            enhanced_data['extracted_at'] = datetime.now().isoformat()
+            # Categorizar
+            enhanced_data['category'] = self._categorize_invoice(enhanced_data, text)
             
-            logger.info(f"✅ Extracción completada - Confianza: {confidence:.0%}")
+            logger.info(f"✅ Datos extraídos con {enhanced_data['confidence']:.0%} de confianza")
+            
             return enhanced_data
             
         except Exception as e:
-            logger.error(f"❌ Error extrayendo datos de factura: {e}")
-            return {
-                'error': str(e),
-                'confidence': 0.0,
-                'extraction_method': 'failed'
-            }
+            logger.error(f"❌ Error extrayendo datos: {e}")
+            return None
     
-    def _extract_using_patterns(self, text: str) -> Dict[str, Any]:
-        """Extrae datos usando patrones de regex"""
+    def _content_to_text(self, content: Any) -> str:
+        """Convierte diferentes tipos de contenido a texto"""
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, bytes):
+            try:
+                return content.decode('utf-8', errors='ignore')
+            except:
+                return content.decode('latin-1', errors='ignore')
+        elif isinstance(content, dict):
+            # Si es un dict, buscar campos relevantes
+            text_parts = []
+            for key in ['text', 'body', 'content', 'subject', 'description']:
+                if key in content:
+                    text_parts.append(str(content[key]))
+            return '\n'.join(text_parts)
+        else:
+            return str(content)
+    
+    def _extract_with_patterns(self, text: str) -> Dict[str, Any]:
+        """Extrae datos usando patrones regex"""
         extracted = {}
         
-        # Normalizar texto para búsqueda
-        text_lower = text.lower()
-        
-        # Extraer cada tipo de dato
         for data_type, patterns in self.patterns.items():
-            matches = []
-            
             for pattern in patterns:
                 try:
-                    found_matches = re.finditer(pattern, text_lower, re.IGNORECASE | re.MULTILINE)
-                    for match in found_matches:
-                        if match.group(1):
-                            matches.append(match.group(1).strip())
+                    matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+                    if matches:
+                        # Seleccionar el mejor match
+                        best_match = self._select_best_match(matches, data_type)
+                        if best_match:
+                            extracted[data_type] = best_match
+                            break  # Usar el primer patrón que funcione
                 except re.error as e:
-                    logger.warning(f"⚠️  Patrón regex inválido para {data_type}: {e}")
+                    logger.debug(f"Error en patrón regex: {e}")
                     continue
-            
-            # Seleccionar el mejor match
-            if matches:
-                best_match = self._select_best_match(data_type, matches)
-                if best_match:
-                    extracted[data_type] = best_match
         
         return extracted
     
-    def _select_best_match(self, data_type: str, matches: List[str]) -> Optional[str]:
+    def _select_best_match(self, matches: List[str], data_type: str) -> Optional[str]:
         """Selecciona el mejor match de una lista"""
         if not matches:
             return None
         
+        # Limpiar matches
+        matches = [m.strip() for m in matches if m and m.strip()]
+        
+        if not matches:
+            return None
+        
+        # Lógica específica por tipo de dato
         if data_type == 'amount':
-            # Para montos, seleccionar el valor más alto (probablemente el total)
+            # Para montos, seleccionar el más grande (probablemente el total)
             amounts = []
             for match in matches:
                 try:
-                    # Limpiar y convertir a float
                     clean_amount = re.sub(r'[^\d.,]', '', match)
-                    clean_amount = clean_amount.replace(',', '.')
                     if clean_amount:
-                        amounts.append(float(clean_amount))
+                        amounts.append(float(clean_amount.replace(',', '')))
                 except ValueError:
                     continue
             
             if amounts:
-                return str(max(amounts))
+                max_amount = max(amounts)
+                return str(max_amount)
         
         elif data_type == 'vendor':
             # Para proveedor, seleccionar el más específico (no email genérico)
             for match in matches:
-                if '@' in match and not any(word in match.lower() for word in ['noreply', 'no-reply', 'donotreply']):
-                    return match
-                elif len(match) > 3 and not match.isdigit():
+                if '@' not in match or not any(word in match.lower() for word in ['noreply', 'no-reply', 'donotreply']):
                     return match
         
         elif data_type == 'concept':
@@ -329,13 +347,20 @@ class InvoiceExtractor:
             return float(clean_amount)
             
         except (ValueError, TypeError):
-            logger.warning(f"⚠️  No se pudo parsear monto: {amount_str}")
+            logger.warning(f"⚠️ No se pudo parsear monto: {amount_str}")
             return 0.0
     
     def _detect_currency(self, text: str) -> str:
         """Detecta la moneda del texto"""
-        # Buscar símbolos de moneda
-        for symbol, currency in self.currency_symbols.items():
+        # Buscar símbolos de moneda usando Unicode escapado
+        currency_checks = [
+            ('$', 'USD'),
+            ('\u20AC', 'EUR'),  # Euro
+            ('\u00A3', 'GBP'),  # Libra
+            ('\u00A5', 'JPY'),  # Yen
+        ]
+        
+        for symbol, currency in currency_checks:
             if symbol in text:
                 return currency
         
@@ -348,7 +373,14 @@ class InvoiceExtractor:
         
         # Detectar por palabras clave
         if any(word in text.lower() for word in ['peso', 'pesos']):
-            return 'COP'
+            # Determinar qué tipo de peso
+            if 'colombia' in text.lower() or 'cop' in text.upper():
+                return 'COP'
+            elif 'mexico' in text.lower() or 'mx' in text.lower():
+                return 'MXN'
+            elif 'argentina' in text.lower() or 'arg' in text.lower():
+                return 'ARS'
+            return 'COP'  # Default para pesos
         elif any(word in text.lower() for word in ['dollar', 'dollars', 'dólar', 'dólares']):
             return 'USD'
         elif any(word in text.lower() for word in ['euro', 'euros']):
@@ -381,9 +413,6 @@ class InvoiceExtractor:
         # Remover saltos de línea y espacios excesivos
         concept = re.sub(r'\s+', ' ', concept).strip()
         
-        # Remover caracteres de control
-        concept = ''.join(char for char in concept if ord(char) >= 32)
-        
         # Limitar longitud
         if len(concept) > 200:
             concept = concept[:200] + "..."
@@ -391,96 +420,91 @@ class InvoiceExtractor:
         return concept
     
     def _infer_concept_from_context(self, text: str) -> Optional[str]:
-        """Infiere el concepto del contexto cuando no se encuentra explícitamente"""
-        # Buscar líneas que podrían ser descripción
+        """Intenta inferir el concepto del contexto"""
+        # Buscar líneas que parezcan conceptos
         lines = text.split('\n')
         for line in lines:
             line = line.strip()
-            if len(line) > 20 and len(line) < 150:
-                # Verificar si parece una descripción
-                if any(word in line.lower() for word in ['service', 'product', 'subscription', 'servicio', 'producto', 'suscripción']):
-                    return line
+            # Buscar líneas descriptivas
+            if 10 < len(line) < 100:
+                # Evitar líneas que sean solo números o emails
+                if not re.match(r'^[\d\s.,]+$', line) and '@' not in line:
+                    # Verificar que tenga palabras reales
+                    words = line.split()
+                    if len(words) >= 2 and len(words) <= 15:
+                        return line
         
         return None
     
     def _detect_payment_method(self, text: str) -> Optional[str]:
-        """Detecta el método de pago mencionado"""
-        text_lower = text.lower()
+        """Detecta el método de pago"""
+        methods = {
+            'credit_card': ['tarjeta', 'card', 'visa', 'mastercard', 'amex'],
+            'transfer': ['transferencia', 'transfer', 'wire', 'banco'],
+            'cash': ['efectivo', 'cash', 'contado'],
+            'paypal': ['paypal'],
+            'check': ['cheque', 'check']
+        }
         
-        if any(word in text_lower for word in ['credit card', 'tarjeta', 'visa', 'mastercard']):
-            return 'credit_card'
-        elif any(word in text_lower for word in ['bank transfer', 'transferencia', 'wire transfer']):
-            return 'bank_transfer'
-        elif any(word in text_lower for word in ['paypal']):
-            return 'paypal'
-        elif any(word in text_lower for word in ['cash', 'efectivo', 'contado']):
-            return 'cash'
+        text_lower = text.lower()
+        for method, keywords in methods.items():
+            if any(keyword in text_lower for keyword in keywords):
+                return method
         
         return None
     
     def _detect_language(self, text: str) -> str:
         """Detecta el idioma del texto"""
+        spanish_words = ['factura', 'importe', 'fecha', 'proveedor', 'concepto', 'pagar']
+        english_words = ['invoice', 'amount', 'date', 'vendor', 'concept', 'payment']
+        
         text_lower = text.lower()
-        
-        spanish_words = ['factura', 'importe', 'empresa', 'fecha', 'vencimiento', 'pagar']
-        english_words = ['invoice', 'amount', 'company', 'date', 'due', 'payment']
-        
         spanish_count = sum(1 for word in spanish_words if word in text_lower)
         english_count = sum(1 for word in english_words if word in text_lower)
         
         if spanish_count > english_count:
             return 'es'
-        else:
+        elif english_count > spanish_count:
             return 'en'
+        else:
+            return 'unknown'
+    
+    def _calculate_confidence(self, data: Dict[str, Any]) -> float:
+        """Calcula la confianza de la extracción"""
+        confidence = 0.0
+        weights = {
+            'amount': 0.25,
+            'vendor': 0.20,
+            'invoice_number': 0.15,
+            'concept': 0.15,
+            'invoice_date': 0.10,
+            'currency': 0.05,
+            'tax': 0.05,
+            'category': 0.05
+        }
+        
+        for field, weight in weights.items():
+            if field in data and data[field]:
+                confidence += weight
+        
+        return min(confidence, 1.0)
     
     def _categorize_invoice(self, data: Dict[str, Any], text: str) -> str:
-        """Categoriza el tipo de factura"""
+        """Categoriza la factura basándose en el contenido"""
         text_lower = text.lower()
-        vendor = data.get('vendor', '').lower()
-        concept = data.get('concept', '').lower()
+        vendor_lower = str(data.get('vendor', '')).lower()
+        concept_lower = str(data.get('concept', '')).lower()
         
-        # Combinar texto para análisis
-        combined_text = f"{text_lower} {vendor} {concept}"
-        
-        # Verificar cada categoría
+        # Buscar categoría por palabras clave
         for category, keywords in self.category_keywords.items():
-            if any(keyword in combined_text for keyword in keywords):
-                return category
+            for keyword in keywords:
+                if keyword in text_lower or keyword in vendor_lower or keyword in concept_lower:
+                    return category
         
         return 'miscellaneous'
     
-    def _calculate_confidence(self, data: Dict[str, Any], text: str) -> float:
-        """Calcula la confianza de la extracción"""
-        confidence_factors = []
-        
-        # Factor por datos encontrados
-        if data.get('amount'):
-            confidence_factors.append(0.3)
-        if data.get('vendor'):
-            confidence_factors.append(0.25)
-        if data.get('concept'):
-            confidence_factors.append(0.2)
-        if data.get('invoice_number'):
-            confidence_factors.append(0.15)
-        if data.get('invoice_date'):
-            confidence_factors.append(0.1)
-        
-        # Factor por palabras clave de factura
-        invoice_keywords = ['invoice', 'factura', 'bill', 'payment', 'total', 'amount']
-        keyword_count = sum(1 for keyword in invoice_keywords if keyword in text.lower())
-        keyword_factor = min(keyword_count * 0.05, 0.2)
-        confidence_factors.append(keyword_factor)
-        
-        # Factor por estructura del texto
-        if len(text) > 100:  # Suficiente contenido
-            confidence_factors.append(0.1)
-        
-        # Calcular confianza total
-        total_confidence = sum(confidence_factors)
-        return min(total_confidence, 1.0)
-    
-    async def _extract_text_from_attachment(self, attachment: Dict[str, Any]) -> Optional[str]:
-        """Extrae texto de adjuntos"""
+    def extract_from_attachment(self, attachment: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Extrae datos de un adjunto"""
         try:
             filename = attachment.get('filename', '').lower()
             content_type = attachment.get('content_type', '')
@@ -488,11 +512,16 @@ class InvoiceExtractor:
             # Solo procesar archivos de texto por ahora
             if content_type.startswith('text/') or filename.endswith(('.txt', '.csv')):
                 content = base64.b64decode(attachment['content'])
-                return content.decode('utf-8', errors='ignore')
+                return self.extract(content)
             
             elif filename.endswith('.pdf'):
                 # Para PDFs necesitaríamos PyPDF2 o similar
                 logger.info(f"📄 PDF detectado: {filename} (extracción de PDF no implementada)")
+                return None
+            
+            elif filename.endswith(('.xml', '.cfdi')):
+                # Para XML/CFDI necesitaríamos xml.etree
+                logger.info(f"📄 XML/CFDI detectado: {filename} (extracción XML no implementada)")
                 return None
             
             elif filename.endswith(('.doc', '.docx')):
@@ -505,7 +534,7 @@ class InvoiceExtractor:
                 return None
                 
         except Exception as e:
-            logger.warning(f"⚠️  Error extrayendo texto de adjunto: {e}")
+            logger.warning(f"⚠️ Error extrayendo datos de adjunto: {e}")
             return None
     
     def validate_extracted_data(self, data: Dict[str, Any]) -> List[str]:
@@ -518,7 +547,7 @@ class InvoiceExtractor:
                 amount = float(data['amount'])
                 if amount <= 0:
                     warnings.append("Monto debe ser mayor a 0")
-                elif amount > 1000000:
+                elif amount > 10000000:
                     warnings.append("Monto parece excesivamente alto")
             except (ValueError, TypeError):
                 warnings.append("Monto no es un número válido")
@@ -569,11 +598,18 @@ def clean_currency_amount(amount_str: str) -> Tuple[Optional[float], Optional[st
     if not amount_str:
         return None, None
     
-    # Detectar moneda
+    # Detectar moneda usando caracteres Unicode escapados
     currency = None
-    for symbol in [', '€', '£', '¥']:
+    currency_symbols = [
+        ('$', 'USD'),
+        ('\u20AC', 'EUR'),  # Euro
+        ('\u00A3', 'GBP'),  # Libra  
+        ('\u00A5', 'JPY'),  # Yen
+    ]
+    
+    for symbol, curr in currency_symbols:
         if symbol in amount_str:
-            currency = symbol
+            currency = curr
             break
     
     # Detectar códigos de moneda
@@ -647,37 +683,26 @@ def extract_phone_numbers(text: str) -> List[str]:
     """Extrae números de teléfono del texto"""
     phone_patterns = [
         r'\+?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}',  # US
-        r'\+?[0-9]{2,3}[-.\s]?[0-9]{3,4}[-.\s]?[0-9]{3,4}[-.\s]?[0-9]{3,4}',  # International
+        r'\+?[0-9]{2,3}[-.\s]?[0-9]{3,4}[-.\s]?[0-9]{3,4}[-.\s]?[0-9]{4}',  # Internacional
+        r'\b[0-9]{10}\b',  # 10 dígitos seguidos
     ]
     
-    phones = []
+    phone_numbers = []
     for pattern in phone_patterns:
-        phones.extend(re.findall(pattern, text))
+        matches = re.findall(pattern, text)
+        phone_numbers.extend(matches)
     
-    return phones
+    return list(set(phone_numbers))  # Eliminar duplicados
 
-def normalize_invoice_number(invoice_num: str) -> str:
-    """Normaliza números de factura"""
-    if not invoice_num:
-        return invoice_num
-    
-    # Remover espacios excesivos
-    normalized = re.sub(r'\s+', '', invoice_num.upper())
-    
-    # Asegurar formato consistente
-    normalized = re.sub(r'[^\w-]', '', normalized)
-    
-    return normalized
-
-# Clase para testing y desarrollo
+# Clase de prueba para desarrollo
 class InvoiceExtractorTester:
-    """Clase de utilidad para probar el extractor"""
+    """Clase para probar el extractor de facturas"""
     
     def __init__(self):
         self.extractor = InvoiceExtractor()
-    
-    async def test_with_sample_data(self):
-        """Prueba el extractor con datos de muestra"""
+        
+    async def test_extraction(self):
+        """Prueba la extracción con datos de ejemplo"""
         sample_emails = [
             {
                 'content': '''
@@ -685,11 +710,15 @@ class InvoiceExtractorTester:
                 From: Tech Services Inc. <billing@techservices.com>
                 Date: January 15, 2024
                 
+                Dear Customer,
+                
+                Your monthly hosting service invoice is ready.
+                
                 Description: Monthly hosting service
-                Amount: $45.99
+                Amount Due: $45.99 USD
                 Due Date: February 15, 2024
                 
-                Please pay by the due date.
+                Thank you for your business!
                 ''',
                 'expected': {
                     'amount': 45.99,
@@ -722,11 +751,27 @@ class InvoiceExtractorTester:
         results = []
         for i, sample in enumerate(sample_emails):
             print(f"\n🧪 Probando muestra {i + 1}:")
-            result = await self.extractor.extract_invoice_data(sample['content'])
+            result = self.extractor.extract(sample['content'])
             
-            print(f"  📊 Resultado: {json.dumps(result, indent=2, ensure_ascii=False)}")
-            print(f"  🎯 Confianza: {result.get('confidence', 0):.0%}")
+            if result:
+                print(f"  📊 Resultado: {json.dumps(result, indent=2, ensure_ascii=False)}")
+                print(f"  🎯 Confianza: {result.get('confidence', 0):.0%}")
+            else:
+                print("  ❌ No se pudieron extraer datos")
             
             results.append(result)
         
         return results
+
+# Main para pruebas
+if __name__ == "__main__":
+    import asyncio
+    
+    print("🚀 Probando InvoiceExtractor...")
+    print("=" * 60)
+    
+    tester = InvoiceExtractorTester()
+    asyncio.run(tester.test_extraction())
+    
+    print("\n" + "=" * 60)
+    print("✅ Pruebas completadas")
