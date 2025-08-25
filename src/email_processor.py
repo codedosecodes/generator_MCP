@@ -220,55 +220,76 @@ class EmailProcessor:
         Returns:
             String con el criterio de búsqueda
         """
-        criteria = []
+        criteria_parts = []
         
         # Filtro de fechas
         if date_from:
             date_str = date_from.strftime("%d-%b-%Y")
-            criteria.append(f' SINCE {date_str}')
+            criteria_parts.append(f'SINCE {date_str}')
         
         if date_to:
             date_str = date_to.strftime("%d-%b-%Y")
-            criteria.append(f' BEFORE {date_str}')
+            criteria_parts.append(f'BEFORE {date_str}')
         
-        # Filtro de remitentes
-        if senders:
-            sender_criteria = []
-            for sender in senders:
-                sender_criteria.append(f'FROM "{sender}"')
-            if len(sender_criteria) == 1:
-                criteria.append(sender_criteria[0])
-            else:
-                # Para múltiples remitentes, usar OR
-                criteria.append(f'OR {" OR ".join(sender_criteria)}')
-        
-        # Filtro de asunto
-        if subject_filters:
-            subject_criteria = []
-            for keyword in subject_filters:
-                subject_criteria.append(f'SUBJECT "{keyword}"')
-            if len(subject_criteria) == 1:
-                criteria.append(subject_criteria[0])
-            else:
-                # Para múltiples keywords, usar OR
-                criteria.append(f' OR {" OR ".join(subject_criteria)}')
-        
-        # Query adicional
-        if query:
-            criteria.append(f'TEXT "{query}"')
+        # Para Gmail, podemos usar X-GM-RAW para búsquedas más complejas
+        if 'gmail' in self.config.imap_server.lower():
+            # Usar sintaxis específica de Gmail
+            gmail_query_parts = []
+            
+            # Agregar filtros de asunto con OR
+            if subject_filters:
+                subject_query = ' OR '.join([f'subject:{keyword}' for keyword in subject_filters])
+                gmail_query_parts.append(f'({subject_query})')
+            
+            # Agregar remitentes con OR
+            if senders:
+                sender_query = ' OR '.join([f'from:{sender}' for sender in senders])
+                gmail_query_parts.append(f'({sender_query})')
+            
+            # Agregar query adicional
+            if query:
+                gmail_query_parts.append(query)
+            
+            # Si hay query de Gmail, agregarlo
+            if gmail_query_parts:
+                gmail_query = ' '.join(gmail_query_parts)
+                criteria_parts.append(f'X-GM-RAW "{gmail_query}"')
+        else:
+            # Para otros servidores IMAP, usar sintaxis estándar más simple
+            # IMAP estándar no soporta OR complejos, así que buscaremos todo y filtraremos después
+            
+            # Si hay múltiples keywords, buscar el primero más común
+            if subject_filters:
+                # Tomar solo el primer filtro para servidores no-Gmail
+                criteria_parts.append(f'SUBJECT "{subject_filters[0]}"')
+            
+            # Para remitentes, usar solo el primero
+            if senders:
+                criteria_parts.append(f'FROM "{senders[0]}"')
+            
+            # Query adicional
+            if query:
+                criteria_parts.append(f'TEXT "{query}"')
         
         # Si no hay criterios, buscar todos
-        if not criteria:
+        if not criteria_parts:
             return 'ALL'
-       
-        # Combinar criterios
-        if len(criteria) == 1:
-            print("1-",criteria[0])
         
-            return criteria[0]
-        else:
-            print("2-","".join(criteria))
-            return f'({" ".join(criteria)})'
+        # Para Gmail con X-GM-RAW
+        if any('X-GM-RAW' in part for part in criteria_parts):
+            # Separar las partes de fecha de las de Gmail
+            date_parts = [p for p in criteria_parts if 'SINCE' in p or 'BEFORE' in p]
+            gmail_parts = [p for p in criteria_parts if 'X-GM-RAW' in p]
+            
+            if date_parts and gmail_parts:
+                return f'{" ".join(date_parts)} {" ".join(gmail_parts)}'
+            elif gmail_parts:
+                return ' '.join(gmail_parts)
+            else:
+                return ' '.join(date_parts) if date_parts else 'ALL'
+        
+        # Para otros servidores
+        return ' '.join(criteria_parts)
     
     def _fetch_email(self, email_id: bytes) -> Optional[Dict[str, Any]]:
         """
