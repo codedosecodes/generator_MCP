@@ -6,16 +6,37 @@ Procesador de correos con soporte para Gmail, Outlook y otros
 
 import imaplib
 import email
+from email.message import Message
+from email.header import decode_header
+from email.utils import parsedate_to_datetime
 import logging
 import base64
 import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
-from email.header import decode_header
-from email.utils import parsedate_to_datetime
-import chardet
 
 logger = logging.getLogger(__name__)
+
+class EmailCredentials:
+    """Credenciales para el servidor de email"""
+    
+    def __init__(self, config_dict: Dict[str, Any]):
+        """
+        Inicializa las credenciales desde un diccionario
+        
+        Args:
+            config_dict: Diccionario con las credenciales
+        """
+        self.server = config_dict.get('server', 'imap.gmail.com')
+        self.port = config_dict.get('port', 993)
+        self.username = config_dict.get('username', '')
+        self.password = config_dict.get('password', '')
+        
+        # Compatibilidad con diferentes nombres de campos
+        if not self.server and 'imap_server' in config_dict:
+            self.server = config_dict['imap_server']
+        if not self.port and 'imap_port' in config_dict:
+            self.port = config_dict['imap_port']
 
 class EmailConfig:
     """Configuración para el procesador de email"""
@@ -363,10 +384,16 @@ class EmailProcessor:
                     except:
                         decoded_parts.append(part.decode('utf-8', errors='ignore'))
                 else:
-                    # Intentar detectar encoding
-                    detected = chardet.detect(part)
-                    encoding = detected.get('encoding', 'utf-8')
-                    decoded_parts.append(part.decode(encoding, errors='ignore'))
+                    # Intentar con diferentes encodings comunes
+                    for enc in ['utf-8', 'latin-1', 'iso-8859-1', 'windows-1252']:
+                        try:
+                            decoded_parts.append(part.decode(enc))
+                            break
+                        except:
+                            continue
+                    else:
+                        # Si ninguno funciona, usar utf-8 con ignore
+                        decoded_parts.append(part.decode('utf-8', errors='ignore'))
             else:
                 decoded_parts.append(str(part))
         
@@ -380,14 +407,14 @@ class EmailProcessor:
         except:
             return date_str
     
-    def _has_attachments(self, msg: email.message.Message) -> bool:
+    def _has_attachments(self, msg: Message) -> bool:
         """Verifica si el mensaje tiene adjuntos"""
         for part in msg.walk():
             if part.get_content_disposition() == 'attachment':
                 return True
         return False
     
-    def _get_email_body(self, msg: email.message.Message) -> str:
+    def _get_email_body(self, msg: Message) -> str:
         """Extrae el cuerpo del email"""
         body = ""
         
