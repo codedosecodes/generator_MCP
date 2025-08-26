@@ -531,74 +531,193 @@ class DocuFindProcessor:
     #    except Exception as e:
     #        self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
     
+    #def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
+    #    """Actualiza la hoja de cálculo con los datos de la factura"""
+    #    try:
+    #        # Buscar o crear hoja de cálculo en carpeta raíz DOCUFIND
+    #        spreadsheet_name = f"DOCUFIND_Facturas_{datetime.now().year}"
+#
+    #        # Primero crear la carpeta raíz si no existe
+    #        root_folder_id = self.drive_client.create_folder("DOCUFIND")
+#
+    #        if not root_folder_id:
+    #            self.logger.error("❌ No se pudo crear/obtener carpeta DOCUFIND")
+    #            return
+#
+    #        # Crear o obtener spreadsheet EN la carpeta DOCUFIND
+    #        spreadsheet_id = self.drive_client.get_or_create_spreadsheet(
+    #            spreadsheet_name, 
+    #            root_folder_id  # Importante: pasar el ID de la carpeta
+    #        )
+#
+    #        if not spreadsheet_id:
+    #            self.logger.error("❌ No se pudo crear/obtener hoja de cálculo")
+    #            return
+#
+    #        # Preparar fila de datos
+    #        # Obtener información del email actual si está disponible
+    #        email_info = getattr(self, 'current_email', {})
+    #        attachments_info = getattr(self, 'current_attachments', {})
+#
+    #        row_data = [
+    #            # Información del procesamiento y email
+    #            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Fecha procesamiento
+    #            email_info.get('date', ''),                     # Fecha del email
+    #            email_info.get('sender', ''),                   # Remitente
+    #            email_info.get('subject', ''),                  # Asunto
+    #            'Sí' if attachments_info else 'No',             # Tiene adjuntos
+    #            str(len(attachments_info)) if attachments_info else '0',  # Cantidad
+    #            ', '.join([a.get('filename', '') for a in attachments_info]) if attachments_info else '',  # Nombres
+#
+    #            # Información de la factura
+    #            invoice_data.get('invoice_date', invoice_data.get('date', '')),
+    #            invoice_data.get('vendor', ''),
+    #            invoice_data.get('invoice_number', ''),
+    #            invoice_data.get('concept', ''),
+    #            str(invoice_data.get('subtotal', '')),
+    #            str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
+    #            str(invoice_data.get('amount', invoice_data.get('total', ''))),
+    #            invoice_data.get('currency', 'MXN'),
+    #            invoice_data.get('payment_method', ''),
+#
+    #            # Información adicional
+    #            invoice_data.get('category', 'Sin categoría'),
+    #            invoice_data.get('status', 'Procesado'),
+    #            f"{invoice_data.get('confidence', 0):.1%}" if invoice_data.get('confidence') else 'N/A',
+    #            f"https://drive.google.com/file/d/{file_id}/view" if file_id else '',
+    #            invoice_data.get('notes', '')
+    #        ]
+#
+    #        # Agregar fila a la hoja
+    #        if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
+    #            self.logger.info(f"        ✅ Datos agregados a hoja de cálculo")
+    #        else:
+    #            self.logger.error(f"        ❌ Error agregando datos a spreadsheet")
+#
+    #    except Exception as e:
+    #        self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
+    #        import traceback
+    #        traceback.print_exc()
+
+
+
     def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
         """Actualiza la hoja de cálculo con los datos de la factura"""
         try:
-            # Buscar o crear hoja de cálculo en carpeta raíz DOCUFIND
+            # Buscar o crear hoja de cálculo
             spreadsheet_name = f"DOCUFIND_Facturas_{datetime.now().year}"
-
-            # Primero crear la carpeta raíz si no existe
+            
+            # Primero crear carpeta DOCUFIND si no existe
             root_folder_id = self.drive_client.create_folder("DOCUFIND")
-
             if not root_folder_id:
-                self.logger.error("❌ No se pudo crear/obtener carpeta DOCUFIND")
+                self.logger.error("❌ No se pudo crear carpeta DOCUFIND")
                 return
-
-            # Crear o obtener spreadsheet EN la carpeta DOCUFIND
+            
+            # Crear o obtener spreadsheet
             spreadsheet_id = self.drive_client.get_or_create_spreadsheet(
-                spreadsheet_name, 
-                root_folder_id  # Importante: pasar el ID de la carpeta
+                spreadsheet_name,
+                root_folder_id
             )
-
+            
             if not spreadsheet_id:
                 self.logger.error("❌ No se pudo crear/obtener hoja de cálculo")
                 return
-
-            # Preparar fila de datos
-            # Obtener información del email actual si está disponible
+            
+            # Obtener información del email si está disponible
             email_info = getattr(self, 'current_email', {})
-            attachments_info = getattr(self, 'current_attachments', {})
-
+            attachments_info = getattr(self, 'current_attachments', [])
+            
+            # Preparar lista de nombres de adjuntos
+            attachment_names = []
+            if attachments_info:
+                for att in attachments_info:
+                    if isinstance(att, dict):
+                        attachment_names.append(att.get('filename', ''))
+                    else:
+                        attachment_names.append(str(att))
+            
+            # IMPORTANTE: Preparar exactamente 20 campos en orden
             row_data = [
-                # Información del procesamiento y email
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Fecha procesamiento
-                email_info.get('date', ''),                     # Fecha del email
-                email_info.get('sender', ''),                   # Remitente
-                email_info.get('subject', ''),                  # Asunto
-                'Sí' if attachments_info else 'No',             # Tiene adjuntos
-                str(len(attachments_info)) if attachments_info else '0',  # Cantidad
-                ', '.join([a.get('filename', '') for a in attachments_info]) if attachments_info else '',  # Nombres
-
-                # Información de la factura
+                # 1. Fecha Procesamiento
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                
+                # 2. Fecha Email
+                email_info.get('date', '').split(' ')[0] if email_info.get('date') else '',
+                
+                # 3. Remitente
+                email_info.get('sender', ''),
+                
+                # 4. Asunto
+                email_info.get('subject', ''),
+                
+                # 5. Tiene Adjuntos
+                'Sí' if attachments_info else 'No',
+                
+                # 6. Cantidad Adjuntos
+                str(len(attachments_info)) if attachments_info else '0',
+                
+                # 7. Nombres Adjuntos
+                ', '.join(attachment_names)[:500] if attachment_names else '',
+                
+                # 8. Fecha Factura
                 invoice_data.get('invoice_date', invoice_data.get('date', '')),
-                invoice_data.get('vendor', ''),
-                invoice_data.get('invoice_number', ''),
-                invoice_data.get('concept', ''),
+                
+                # 9. Proveedor
+                str(invoice_data.get('vendor', ''))[:100],
+                
+                # 10. Número Factura
+                str(invoice_data.get('invoice_number', ''))[:50],
+                
+                # 11. Concepto
+                str(invoice_data.get('concept', ''))[:200],
+                
+                # 12. Subtotal
                 str(invoice_data.get('subtotal', '')),
+                
+                # 13. Impuestos
                 str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
+                
+                # 14. Total
                 str(invoice_data.get('amount', invoice_data.get('total', ''))),
+                
+                # 15. Moneda
                 invoice_data.get('currency', 'MXN'),
+                
+                # 16. Método Pago
                 invoice_data.get('payment_method', ''),
-
-                # Información adicional
+                
+                # 17. Categoría
                 invoice_data.get('category', 'Sin categoría'),
-                invoice_data.get('status', 'Procesado'),
+                
+                # 18. Estado
+                'Procesado',
+                
+                # 19. Confianza
                 f"{invoice_data.get('confidence', 0):.1%}" if invoice_data.get('confidence') else 'N/A',
-                f"https://drive.google.com/file/d/{file_id}/view" if file_id else '',
-                invoice_data.get('notes', '')
+                
+                # 20. Link Archivo
+                f"https://drive.google.com/file/d/{file_id}/view" if file_id else ''
             ]
-
+            
+            # Verificar que tenemos exactamente 20 campos
+            if len(row_data) != 20:
+                self.logger.warning(f"⚠️ Número de campos incorrecto: {len(row_data)}, esperado: 20")
+                # Ajustar a 20 campos
+                while len(row_data) < 20:
+                    row_data.append('')
+                row_data = row_data[:20]
+            
             # Agregar fila a la hoja
             if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
                 self.logger.info(f"        ✅ Datos agregados a hoja de cálculo")
             else:
-                self.logger.error(f"        ❌ Error agregando datos a spreadsheet")
-
+                self.logger.error(f"        ❌ Error agregando datos a hoja")
+                
         except Exception as e:
             self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
             import traceback
             traceback.print_exc()
-
+        
     
     def _generate_report(self, results: Dict):
         """Genera un reporte del procesamiento"""
