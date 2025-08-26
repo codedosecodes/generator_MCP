@@ -299,13 +299,59 @@ class DocuFindProcessor:
         
         return has_keyword or has_valid_extension
     
+#    def _organize_in_drive(self, email: Dict, attachment: Dict, invoice_data: Dict):
+#        """Organiza una factura en Google Drive"""
+#        try:
+#            # Crear estructura de carpetas basada en fecha
+#            date = datetime.strptime(email.get('date', ''), '%Y-%m-%d')
+#            folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Facturas"
+#            
+#            # Crear carpetas si no existen
+#            folder_id = self.drive_client.create_folder_path(folder_path)
+#            
+#            # Renombrar archivo con datos de factura
+#            new_filename = self._generate_filename(invoice_data, attachment['filename'])
+#            
+#            # Subir archivo
+#            file_id = self.drive_client.upload_file(
+#                attachment['content'],
+#                new_filename,
+#                folder_id,
+#                invoice_data
+#            )
+#            
+#            if file_id:
+#                self.logger.info(f"      ✅ Subido a Drive: {new_filename}")
+#                self.stats['archivos_subidos'] += 1
+#                
+#                # Actualizar hoja de cálculo
+#                self._update_spreadsheet(invoice_data, file_id)
+#            
+#        except Exception as e:
+#            self.logger.error(f"      ❌ Error organizando en Drive: {e}")
+#            raise
+ 
     def _organize_in_drive(self, email: Dict, attachment: Dict, invoice_data: Dict):
         """Organiza una factura en Google Drive"""
         try:
-            # Crear estructura de carpetas basada en fecha
-            date = datetime.strptime(email.get('date', ''), '%Y-%m-%d')
-            folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Facturas"
+            # Corregir el parseo de fecha - manejar fecha con hora
+            date_str = email.get('date', '')
             
+            # Si la fecha tiene formato "YYYY-MM-DD HH:MM:SS", tomar solo la parte de fecha
+            if ' ' in date_str:
+                date_str = date_str.split(' ')[0]  # Tomar solo "YYYY-MM-DD"
+            
+            # Ahora parsear la fecha
+            try:
+                from datetime import datetime
+                date = datetime.strptime(date_str, '%Y-%m-%d')
+            except ValueError:
+                # Si falla, usar fecha actual
+                date = datetime.now()
+                self.logger.warning(f"⚠️ No se pudo parsear fecha: {email.get('date', '')}, usando fecha actual")
+            
+            # Crear estructura de carpetas basada en fecha
+            folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Facturas"
             # Crear carpetas si no existen
             folder_id = self.drive_client.create_folder_path(folder_path)
             
@@ -328,9 +374,9 @@ class DocuFindProcessor:
                 self._update_spreadsheet(invoice_data, file_id)
             
         except Exception as e:
-            self.logger.error(f"      ❌ Error organizando en Drive: {e}")
-            raise
-    
+           self.logger.error(f"      ❌ Error organizando en Drive: {e}")
+           raise
+           
     def _upload_to_drive(self, email: Dict, attachment: Dict):
         """Sube un archivo no-factura a Google Drive"""
         try:

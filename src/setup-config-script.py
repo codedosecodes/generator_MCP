@@ -117,7 +117,7 @@ def get_google_drive_config() -> Dict[str, Any]:
         "credentials_path": credentials_path,
         "token_path": "config/token.json",
         "scopes": [
-            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive",
             "https://www.googleapis.com/auth/spreadsheets"
         ],
         "root_folder": root_folder,

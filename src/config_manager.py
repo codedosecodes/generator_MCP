@@ -89,7 +89,7 @@ class ConfigManager:
                 "credentials_path": config.get("google_services", {}).get("credentials_path", "./config/credentials.json"),
                 "token_path": config.get("google_services", {}).get("token_path", "./config/token.json"),
                 "scopes": [
-                    "https://www.googleapis.com/auth/drive.file",
+                    "https://www.googleapis.com/auth/drive",  # Cambiado de drive.file a drive
                     "https://www.googleapis.com/auth/spreadsheets"
                 ],
                 "root_folder": config.get("google_services", {}).get("drive_folder_root", "DOCUFIND"),

@@ -42,7 +42,7 @@ class GoogleServicesConfig:
         self.drive_folder_root = config_dict.get('drive_folder_root', 'DOCUFIND')
         self.root_folder = config_dict.get('root_folder', self.drive_folder_root)  # Alias
         self.scopes = config_dict.get('scopes', [
-            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive',
             'https://www.googleapis.com/auth/spreadsheets'
         ])
         self.create_year_folders = config_dict.get('create_year_folders', True)
@@ -54,7 +54,7 @@ class GoogleDriveClient:
     
     # Scopes necesarios
     SCOPES = [
-        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/spreadsheets'
     ]
     

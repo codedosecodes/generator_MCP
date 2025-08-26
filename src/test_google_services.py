@@ -391,7 +391,7 @@ def test_google_api_permissions():
         print("      • Google Sheets API")
         
         print("\n   🔐 Permisos (Scopes) requeridos:")
-        print("   • https://www.googleapis.com/auth/drive.file")
+        print("   • https://www.googleapis.com/auth/drive")
         print("   • https://www.googleapis.com/auth/spreadsheets")
         
     except Exception as e:
