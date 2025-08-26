@@ -255,8 +255,37 @@ class GoogleDriveClient:
             if folder_id:
                 file_metadata['parents'] = [folder_id]
             
+            
             if metadata:
-                file_metadata['properties'] = metadata
+                # Solo incluir propiedades cortas y esenciales
+                limited_metadata = {}
+                
+                # Campos permitidos con valores cortos
+                if 'invoice_number' in metadata:
+                    # Limitar a 20 caracteres
+                    inv_num = str(metadata['invoice_number'])[:20]
+                    if inv_num:
+                        limited_metadata['inv'] = inv_num
+                
+                if 'vendor' in metadata:
+                    # Limitar vendor a 30 caracteres
+                    vendor = str(metadata['vendor'])[:30]
+                    if vendor:
+                        limited_metadata['vnd'] = vendor
+                
+                if 'amount' in metadata:
+                    # Solo el monto como string corto
+                    amount = str(metadata['amount'])[:15]
+                    if amount:
+                        limited_metadata['amt'] = amount
+                
+                # Solo agregar si el total es menor a 100 bytes
+                total_size = sum(len(k) + len(v) for k, v in limited_metadata.items())
+                if total_size < 100:  # Dejar margen de seguridad
+                    file_metadata['properties'] = limited_metadata
+                else:
+                    logger.debug("Metadata muy larga, omitiendo propiedades personalizadas")
+            
             
             # Determinar tipo MIME
             mime_type = self._get_mime_type(filename)
@@ -292,13 +321,87 @@ class GoogleDriveClient:
             logger.error(f"❌ Error subiendo archivo: {e}")
             return None
     
+    #def get_or_create_spreadsheet(self, name: str, folder_id: Optional[str] = None) -> Optional[str]:
+    #    """
+    #    Obtiene o crea una hoja de cálculo
+    #    
+    #    Args:
+    #        name: Nombre de la hoja
+    #        folder_id: ID de la carpeta
+    #        
+    #    Returns:
+    #        ID de la hoja de cálculo
+    #    """
+    #    if not self.sheets_service:
+    #        if not self.authenticate():
+    #            return None
+    #    
+    #    try:
+    #        # Buscar si existe
+    #        query = f"name='{name}' and mimeType='application/vnd.google-apps.spreadsheet'"
+    #        if folder_id:
+    #            query += f" and '{folder_id}' in parents"
+    #        
+    #        results = self.drive_service.files().list(
+    #            q=query,
+    #            fields="files(id, name)"
+    #        ).execute()
+    #        
+    #        files = results.get('files', [])
+    #        
+    #        if files:
+    #            spreadsheet_id = files[0]['id']
+    #            logger.info(f"📊 Hoja existente encontrada: {name}")
+    #            return spreadsheet_id
+    #        
+    #        # Crear nueva hoja
+    #        spreadsheet = {
+    #            'properties': {
+    #                'title': name
+    #            },
+    #            'sheets': [{
+    #                'properties': {
+    #                    'title': 'Datos',
+    #                    'gridProperties': {
+    #                        'rowCount': 1000,
+    #                        'columnCount': 20
+    #                    }
+    #                }
+    #            }]
+    #        }
+    #        
+    #        sheet = self.sheets_service.spreadsheets().create(
+    #            body=spreadsheet
+    #        ).execute()
+    #        
+    #        spreadsheet_id = sheet['spreadsheetId']
+    #        
+    #        # Mover a carpeta si se especificó
+    #        if folder_id:
+    #            self.drive_service.files().update(
+    #                fileId=spreadsheet_id,
+    #                addParents=folder_id,
+    #                fields='id, parents'
+    #            ).execute()
+    #        
+    #        # Agregar headers
+    #        self._add_spreadsheet_headers(spreadsheet_id)
+    #        
+    #        logger.info(f"✅ Hoja de cálculo creada: {name}")
+    #        return spreadsheet_id
+    #        
+    #    except HttpError as e:
+    #        logger.error(f"❌ Error con hoja de cálculo: {e}")
+    #        return None
+    
+    
     def get_or_create_spreadsheet(self, name: str, folder_id: Optional[str] = None) -> Optional[str]:
         """
-        Obtiene o crea una hoja de cálculo
+        Obtiene o crea una hoja de cálculo dentro de la carpeta DOCUFIND
         
         Args:
             name: Nombre de la hoja
-            folder_id: ID de la carpeta
+            folder_id: ID de la carpeta (si no se especifica, usa carpeta raíz DOCUFIND)
             
         Returns:
             ID de la hoja de cálculo
@@ -308,10 +411,23 @@ class GoogleDriveClient:
                 return None
         
         try:
-            # Buscar si existe
+            # Si no se especifica folder_id, crear/obtener carpeta raíz DOCUFIND
+            if not folder_id:
+                # Crear carpeta DOCUFIND si no existe
+                root_folder_name = self.config.root_folder or "DOCUFIND"
+                folder_id = self.create_folder(root_folder_name)
+                
+                if not folder_id:
+                    logger.error("❌ No se pudo crear carpeta raíz DOCUFIND")
+                    return None
+                    
+                logger.info(f"📁 Usando carpeta raíz: {root_folder_name}")
+            
+            # Buscar si la hoja ya existe en la carpeta
             query = f"name='{name}' and mimeType='application/vnd.google-apps.spreadsheet'"
             if folder_id:
                 query += f" and '{folder_id}' in parents"
+            query += " and trashed=false"
             
             results = self.drive_service.files().list(
                 q=query,
@@ -326,6 +442,8 @@ class GoogleDriveClient:
                 return spreadsheet_id
             
             # Crear nueva hoja
+            logger.info(f"📊 Creando nueva hoja: {name}")
+            
             spreadsheet = {
                 'properties': {
                     'title': name
@@ -334,8 +452,8 @@ class GoogleDriveClient:
                     'properties': {
                         'title': 'Datos',
                         'gridProperties': {
-                            'rowCount': 1000,
-                            'columnCount': 20
+                            'rowCount': 10000,  # Más filas
+                            'columnCount': 30   # Más columnas para todos los campos
                         }
                     }
                 }]
@@ -347,18 +465,30 @@ class GoogleDriveClient:
             
             spreadsheet_id = sheet['spreadsheetId']
             
-            # Mover a carpeta si se especificó
+            # IMPORTANTE: Mover la hoja a la carpeta DOCUFIND
             if folder_id:
+                # Obtener los padres actuales
+                file = self.drive_service.files().get(
+                    fileId=spreadsheet_id,
+                    fields='parents'
+                ).execute()
+                
+                previous_parents = ",".join(file.get('parents', []))
+                
+                # Mover a la carpeta DOCUFIND
                 self.drive_service.files().update(
                     fileId=spreadsheet_id,
                     addParents=folder_id,
+                    removeParents=previous_parents,
                     fields='id, parents'
                 ).execute()
+                
+                logger.info(f"✅ Hoja movida a carpeta DOCUFIND")
             
-            # Agregar headers
+            # Agregar headers ampliados
             self._add_spreadsheet_headers(spreadsheet_id)
             
-            logger.info(f"✅ Hoja de cálculo creada: {name}")
+            logger.info(f"✅ Hoja de cálculo creada: {name} (ID: {spreadsheet_id})")
             return spreadsheet_id
             
         except HttpError as e:
@@ -532,81 +662,347 @@ class GoogleDriveClient:
         
         return mime_types.get(extension, 'application/octet-stream')
     
-    def _add_spreadsheet_headers(self, spreadsheet_id: str):
-        """Agrega headers a una hoja de cálculo nueva"""
-        try:
-            headers = [
-                'Fecha Procesamiento',
-                'Fecha Factura',
-                'Proveedor',
-                'Número Factura',
-                'Subtotal',
-                'Impuestos',
-                'Total',
-                'Moneda',
-                'Método Pago',
-                'Estado',
-                'Link Archivo',
-                'Categoría',
-                'Notas'
-            ]
-            
-            body = {'values': [headers]}
-            
-            self.sheets_service.spreadsheets().values().update(
-                spreadsheetId=spreadsheet_id,
-                range='Datos!A1:M1',
-                valueInputOption='RAW',
-                body=body
-            ).execute()
-            
-            # Formatear headers (negrita)
-            requests = [{
-                'repeatCell': {
-                    'range': {
-                        'sheetId': 0,
-                        'startRowIndex': 0,
-                        'endRowIndex': 1
-                    },
-                    'cell': {
-                        'userEnteredFormat': {
-                            'textFormat': {
-                                'bold': True
-                            },
-                            'backgroundColor': {
-                                'red': 0.9,
-                                'green': 0.9,
-                                'blue': 0.9
+#    def _add_spreadsheet_headers(self, spreadsheet_id: str):
+#        """Agrega headers a una hoja de cálculo nueva"""
+#        try:
+#            headers = [
+#                'Fecha Procesamiento',
+#                'Fecha Factura',
+#                'Proveedor',
+#                'Número Factura',
+#                'Subtotal',
+#                'Impuestos',
+#                'Total',
+#                'Moneda',
+#                'Método Pago',
+#                'Estado',
+#                'Link Archivo',
+#                'Categoría',
+#                'Notas'
+#            ]
+#            
+#            body = {'values': [headers]}
+#            
+#            self.sheets_service.spreadsheets().values().update(
+#                spreadsheetId=spreadsheet_id,
+#                range='Datos!A1:M1',
+#                valueInputOption='RAW',
+#                body=body
+#            ).execute()
+#            
+#            # Formatear headers (negrita)
+#            requests = [{
+#                'repeatCell': {
+#                    'range': {
+#                        'sheetId': 0,
+#                        'startRowIndex': 0,
+#                        'endRowIndex': 1
+#                    },
+#                    'cell': {
+#                        'userEnteredFormat': {
+#                            'textFormat': {
+#                                'bold': True
+#                            },
+#                            'backgroundColor': {
+#                                'red': 0.9,
+#                                'green': 0.9,
+#                                'blue': 0.9
+#                            }
+#                        }
+#                    },
+#                    'fields': 'userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor'
+#                }
+#            }]
+#            
+#            # Ajustar ancho de columnas
+#            requests.append({
+#                'autoResizeDimensions': {
+#                    'dimensions': {
+#                        'sheetId': 0,
+#                        'dimension': 'COLUMNS',
+#                        'startIndex': 0,
+#                        'endIndex': 13
+#                    }
+#                }
+#            })
+#            
+#            body = {'requests': requests}
+#            self.sheets_service.spreadsheets().batchUpdate(
+#                spreadsheetId=spreadsheet_id,
+#                body=body
+#            ).execute()
+#            
+#            logger.info("✅ Headers agregados y formateados")
+#            
+#        except Exception as e:
+#            logger.error(f"⚠️ Error agregando headers: {e}")
+#    
+
+
+
+
+        def _add_spreadsheet_headers(self, spreadsheet_id: str):
+            """Agrega headers a una hoja de cálculo nueva"""
+            try:
+                # Headers ampliados con información del email
+                headers = [
+                    # Información del Email
+                    'Fecha Procesamiento',
+                    'Fecha Email',
+                    'Remitente',
+                    'Asunto',
+                    'Tiene Adjuntos',
+                    'Cantidad Adjuntos',
+                    'Nombres Adjuntos',
+                    
+                    # Información de la Factura
+                    'Fecha Factura',
+                    'Proveedor',
+                    'Número Factura',
+                    'Concepto',
+                    'Subtotal',
+                    'Impuestos',
+                    'Total',
+                    'Moneda',
+                    'Método Pago',
+                    
+                    # Información adicional
+                    'Categoría',
+                    'Estado',
+                    'Confianza Extracción',
+                    'Link Archivo Drive',
+                    'Notas'
+                ]
+                
+                body = {'values': [headers]}
+                
+                # Actualizar la primera fila con los headers
+                self.sheets_service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range='Datos!A1:W1',  # Ampliado a columna W para todos los campos
+                    valueInputOption='RAW',
+                    body=body
+                ).execute()
+                
+                # Formatear headers (negrita y color de fondo)
+                requests = [{
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': 0,
+                            'startRowIndex': 0,
+                            'endRowIndex': 1
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'textFormat': {
+                                    'bold': True,
+                                    'fontSize': 11
+                                },
+                                'backgroundColor': {
+                                    'red': 0.2,
+                                    'green': 0.5,
+                                    'blue': 0.9
+                                },
+                                'horizontalAlignment': 'CENTER'
                             }
-                        }
-                    },
-                    'fields': 'userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor'
-                }
-            }]
-            
-            # Ajustar ancho de columnas
-            requests.append({
-                'autoResizeDimensions': {
-                    'dimensions': {
-                        'sheetId': 0,
-                        'dimension': 'COLUMNS',
-                        'startIndex': 0,
-                        'endIndex': 13
+                        },
+                        'fields': 'userEnteredFormat'
                     }
-                }
+                }]
+                
+                # Ajustar ancho de columnas
+                requests.append({
+                    'autoResizeDimensions': {
+                        'dimensions': {
+                            'sheetId': 0,
+                            'dimension': 'COLUMNS',
+                            'startIndex': 0,
+                            'endIndex': 23  # Todas las columnas
+                        }
+                    }
+                })
+                
+                # Congelar primera fila
+                requests.append({
+                    'updateSheetProperties': {
+                        'properties': {
+                            'sheetId': 0,
+                            'gridProperties': {
+                                'frozenRowCount': 1
+                            }
+                        },
+                        'fields': 'gridProperties.frozenRowCount'
+                    }
+                })
+                
+                body = {'requests': requests}
+                self.sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body=body
+                ).execute()
+                
+                logger.info("✅ Headers ampliados agregados y formateados")
+                
+            except Exception as e:
+                logger.error(f"⚠️ Error agregando headers: {e}")
+
+
+
+    def _update_spreadsheet(self, email_data: Dict, invoice_data: Dict, file_id: str, attachments_info: Dict):
+            """
+            Actualiza la hoja de cálculo con los datos completos del email y la factura
+            
+            Args:
+                email_data: Información del email
+                invoice_data: Datos extraídos de la factura
+                file_id: ID del archivo en Drive
+                attachments_info: Información de los adjuntos
+            """
+            try:
+                # Buscar o crear hoja de cálculo en la carpeta raíz DOCUFIND
+                spreadsheet_name = f"DOCUFIND_Facturas_{datetime.now().year}"
+                
+                # No pasar folder_id para que use la carpeta raíz DOCUFIND por defecto
+                spreadsheet_id = self.drive_client.get_or_create_spreadsheet(spreadsheet_name)
+                
+                if not spreadsheet_id:
+                    logger.error("❌ No se pudo obtener/crear la hoja de cálculo")
+                    return
+                
+                # Preparar fila de datos con TODOS los campos solicitados
+                row_data = [
+                    # Información del Email
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Fecha procesamiento
+                    email_data.get('date', ''),                     # Fecha del email
+                    email_data.get('sender', ''),                   # Remitente
+                    email_data.get('subject', ''),                  # Asunto
+                    'Sí' if attachments_info.get('has_attachments') else 'No',  # Tiene adjuntos
+                    str(attachments_info.get('count', 0)),          # Cantidad de adjuntos
+                    ', '.join(attachments_info.get('names', [])),   # Nombres de adjuntos
+                    
+                    # Información de la Factura
+                    invoice_data.get('invoice_date', invoice_data.get('date', '')),  # Fecha factura
+                    invoice_data.get('vendor', ''),                 # Proveedor
+                    invoice_data.get('invoice_number', ''),         # Número factura
+                    invoice_data.get('concept', ''),                # Concepto
+                    str(invoice_data.get('subtotal', '')),          # Subtotal
+                    str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),  # Impuestos
+                    str(invoice_data.get('amount', invoice_data.get('total', ''))),    # Total
+                    invoice_data.get('currency', 'MXN'),            # Moneda
+                    invoice_data.get('payment_method', ''),         # Método pago
+                    
+                    # Información adicional
+                    invoice_data.get('category', 'Sin categoría'),  # Categoría
+                    invoice_data.get('status', 'Procesado'),        # Estado
+                    f"{invoice_data.get('confidence', 0):.1%}" if invoice_data.get('confidence') else 'N/A',  # Confianza
+                    f"https://drive.google.com/file/d/{file_id}/view" if file_id else '',  # Link archivo
+                    invoice_data.get('notes', '')                   # Notas
+                ]
+                
+                # Agregar fila a la hoja
+                if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
+                    self.logger.info(f"✅ Datos agregados a hoja de cálculo")
+                else:
+                    self.logger.error(f"❌ Error agregando datos a hoja de cálculo")
+                    
+            except Exception as e:
+                self.logger.error(f"❌ Error actualizando hoja de cálculo: {e}")
+            
+    #def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
+    #        """Procesa un correo individual con información completa"""
+    #        try:
+    #            self.logger.info(f"\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
+    #            self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
+    #            self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
+    #            
+    #            self.stats['emails_procesados'] += 1
+    #            
+    #            # Extraer adjuntos
+    #            attachments = self.email_processor.get_attachments(email['id'])
+    #            
+    #            # Preparar información de adjuntos
+    #            attachments_info = {
+    #                'has_attachments': len(attachments) > 0,
+    #                'count': len(attachments),
+    #                'names': [att.get('filename', 'sin_nombre') for att in attachments]
+    #            }
+    #            
+    #            if not attachments:
+    #                self.logger.info("  ⚠️ No se encontraron adjuntos")
+    #                # Aún así, registrar el email en la hoja (sin datos de factura)
+    #                self._update_spreadsheet(
+    #                    email_data=email,
+    #                    invoice_data={},
+    #                    file_id=None,
+    #                    attachments_info=attachments_info
+    #                )
+    #                return
+    #            
+    #            self.logger.info(f"  📎 {len(attachments)} adjuntos encontrados")
+    #            
+    #            # Procesar cada adjunto
+    #            for attachment in attachments:
+    #                self._process_attachment_with_email(email, attachment, attachments_info, results)
+    #            
+    #            results['success'].append({
+    #                'email_id': email['id'],
+    #                'subject': email.get('subject'),
+    #                'sender': email.get('sender'),
+    #                'date': email.get('date'),
+    #                'attachments_processed': len(attachments)
+    #            })
+    #            
+    #        except Exception as e:
+    #            self.logger.error(f"  ❌ Error procesando correo: {e}")
+    #            self.stats['errores'] += 1
+    #            results['failed'].append({
+    #                'email_id': email.get('id'),
+    #                'subject': email.get('subject'),
+    #                'error': str(e)
+    #            })
+    ######  este esta 
+    def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
+        """Procesa un correo individual"""
+        try:
+            self.logger.info(f"\\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
+            self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
+            self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
+            
+            self.stats['emails_procesados'] += 1
+            
+            # IMPORTANTE: Guardar contexto del email actual
+            self.current_email = email
+            
+            # Extraer adjuntos
+            attachments = self.email_processor.get_attachments(email['id'])
+            
+            # Guardar contexto de adjuntos
+            self.current_attachments = attachments
+            
+            if not attachments:
+                self.logger.info("  ⚠️ No se encontraron adjuntos")
+                # Aún así registrar el email sin adjuntos
+                self._update_spreadsheet({}, None)
+                return
+            
+            self.logger.info(f"  📎 {len(attachments)} adjuntos encontrados")
+            
+            # Procesar cada adjunto
+            for attachment in attachments:
+                self._process_attachment(email, attachment, results)
+            
+            results['success'].append({
+                'email_id': email['id'],
+                'subject': email.get('subject'),
+                'sender': email.get('sender'),
+                'date': email.get('date'),
+                'attachments_processed': len(attachments)
             })
             
-            body = {'requests': requests}
-            self.sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body=body
-            ).execute()
-            
-            logger.info("✅ Headers agregados y formateados")
-            
         except Exception as e:
-            logger.error(f"⚠️ Error agregando headers: {e}")
-    
+            self.logger.error(f"  ❌ Error procesando correo: {e}")
+            self.stats['errores'] += 1
+            
     def search_files(self, query: str, max_results: int = 10) -> List[Dict[str, str]]:
         """
         Busca archivos en Google Drive
@@ -707,48 +1103,80 @@ def quick_upload(file_path: str, folder_name: str = "DOCUFIND") -> Optional[str]
     filename = os.path.basename(file_path)
     return client.upload_file(content, filename, folder_id)
 
-if __name__ == "__main__":
-    # Prueba básica
-    print("🧪 Probando GoogleDriveClient...")
+
+def main():
+    """
+    Muestra todas las correcciones necesarias
+    """
+    print("=" * 60)
+    print("🔧 CORRECCIONES PARA MEJORAR LA HOJA DE EXCEL")
     print("=" * 60)
     
-    # Configuración de prueba
-    test_config = {
-        'credentials_path': './config/credentials.json',
-        'token_path': './config/token.json',
-        'drive_folder_root': 'DOCUFIND'
-    }
+    print("\n📋 CAMBIOS NECESARIOS:")
+    print("1. Actualizar headers de la hoja con campos del email")
+    print("2. Crear la hoja en la carpeta raíz DOCUFIND")
+    print("3. Capturar información de adjuntos")
+    print("4. Actualizar el método de escritura")
     
-    client = GoogleDriveClient(config=test_config)
-    print(f"✅ GoogleDriveClient creado")
-    print(f"📁 Carpeta raíz: {client.config.root_folder}")
+    print("\n" + "=" * 60)
+    print("📝 INSTRUCCIONES DE IMPLEMENTACIÓN:")
+    print("=" * 60)
     
-    # Probar autenticación si hay credenciales
-    if os.path.exists(test_config['credentials_path']):
-        if client.authenticate():
-            print("✅ Autenticación exitosa")
-            
-            # Prueba rápida
-            print("\n🧪 Prueba rápida:")
-            test_folder = f"TEST_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            folder_id = client.create_folder(test_folder)
-            
-            if folder_id:
-                print(f"✅ Carpeta creada: {test_folder}")
-                
-                # Subir archivo de prueba
-                test_content = b"Este es un archivo de prueba de DOCUFIND"
-                file_id = client.upload_file(
-                    test_content,
-                    "test.txt",
-                    folder_id
-                )
-                
-                if file_id:
-                    print(f"✅ Archivo subido exitosamente")
-                    print(f"\n📁 Ve tu Google Drive y busca la carpeta: {test_folder}")
-        else:
-            print("❌ Error de autenticación")
-    else:
-        print("⚠️ No se encontró credentials.json")
-        print("   Descárgalo desde Google Cloud Console")
+    print("\n1️⃣ EN google_drive_client.py:")
+    print("   • Actualizar _add_spreadsheet_headers()")
+    print("   • Actualizar get_or_create_spreadsheet()")
+    print("   Los nuevos headers incluirán:")
+    print("   - Fecha del correo")
+    print("   - Remitente")
+    print("   - Asunto")
+    print("   - Información de adjuntos")
+    
+    print("\n2️⃣ EN find_documents_main.py:")
+    print("   • Actualizar _update_spreadsheet()")
+    print("   • Actualizar _process_single_email()")
+    print("   • Pasar información del email completa")
+    
+    print("\n3️⃣ RESULTADO ESPERADO:")
+    print("   La hoja tendrá estas columnas:")
+    headers = [
+        'Fecha Procesamiento', 'Fecha Email', 'Remitente', 'Asunto',
+        'Tiene Adjuntos', 'Cantidad Adjuntos', 'Nombres Adjuntos',
+        'Fecha Factura', 'Proveedor', 'Número Factura', 'Concepto',
+        'Subtotal', 'Impuestos', 'Total', 'Moneda', 'Método Pago',
+        'Categoría', 'Estado', 'Confianza Extracción', 'Link Archivo', 'Notas'
+    ]
+    
+    for i, header in enumerate(headers, 1):
+        print(f"   {i:2}. {header}")
+    
+    print("\n" + "=" * 60)
+    print("💡 RESUMEN DE MEJORAS:")
+    print("=" * 60)
+    print("✅ La hoja se creará en la carpeta raíz DOCUFIND")
+    print("✅ Se registrarán TODOS los emails (con y sin adjuntos)")
+    print("✅ Se incluirá información completa del email")
+    print("✅ Se listarán todos los nombres de adjuntos")
+    print("✅ Headers con formato y colores")
+    print("✅ Primera fila congelada para facilitar navegación")
+
+if __name__ == "__main__":
+    # Mostrar los códigos actualizados
+    print("\n🔧 CÓDIGO ACTUALIZADO:")
+    print("=" * 60)
+    
+    print("\n1. HEADERS ACTUALIZADOS:")
+    print(update_spreadsheet_headers())
+    
+    print("\n2. CREAR SPREADSHEET EN CARPETA DOCUFIND:")
+    print(update_get_or_create_spreadsheet())
+    
+    print("\n3. MÉTODO UPDATE_SPREADSHEET:")
+    print(update_spreadsheet_method())
+    
+    print("\n4. PROCESO CON INFO DE ADJUNTOS:")
+    print(update_process_single_email())
+    
+    main()
+    
+    
+    

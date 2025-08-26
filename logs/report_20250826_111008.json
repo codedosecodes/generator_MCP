@@ -1,0 +1,75 @@
+{
+  "fecha_procesamiento": "2025-08-26T11:10:08.753464",
+  "estadisticas": {
+    "emails_procesados": 26,
+    "facturas_extraidas": 17,
+    "archivos_subidos": 14,
+    "errores": 0,
+    "tiempo_inicio": "2025-08-26 11:08:44.944927",
+    "tiempo_fin": null
+  },
+  "exitosos": 8,
+  "fallidos": 0,
+  "detalles": {
+    "success": [
+      {
+        "email_id": "142654",
+        "subject": "Invoice 002 - Provision of web pages and Hosting services",
+        "sender": "Docu4us USA <info@docu4us-usa.com>",
+        "date": "2025-08-04 02:12:27",
+        "attachments_processed": 3
+      },
+      {
+        "email_id": "142655",
+        "subject": "Invoice 003 - Development of sotfwares for the digital ecosystem",
+        "sender": "Docu4us USA <info@docu4us-usa.com>",
+        "date": "2025-08-04 02:13:50",
+        "attachments_processed": 3
+      },
+      {
+        "email_id": "143033",
+        "subject": "Your Receipt from the MALL AT MILLENIA-UA UA Brand House",
+        "sender": "Under Armour <no-reply@underarmour.com>",
+        "date": "2025-08-09 15:12:32",
+        "attachments_processed": 1
+      },
+      {
+        "email_id": "143043",
+        "subject": "Receipt / Tax invoice (#RZORL18595)",
+        "sender": "razerstoreorlando <no-reply@email.lightspeedhq.com>",
+        "date": "2025-08-09 23:11:18",
+        "attachments_processed": 1
+      },
+      {
+        "email_id": "143191",
+        "subject": "Receipt from your recent purchase",
+        "sender": "<PoloFactoryStore-noreply@RalphLauren.com>",
+        "date": "2025-08-12 14:03:03",
+        "attachments_processed": 1
+      },
+      {
+        "email_id": "143200",
+        "subject": "Your Receipt from the ORLANDO VINELAND-UA UA Factory House",
+        "sender": "Under Armour <no-reply@underarmour.com>",
+        "date": "2025-08-12 19:00:35",
+        "attachments_processed": 1
+      },
+      {
+        "email_id": "143839",
+        "subject": "Your receipt from Anthropic, PBC #2186-5407-5666",
+        "sender": "\"Anthropic, PBC\" <invoice+statements@mail.anthropic.com>",
+        "date": "2025-08-22 14:45:44",
+        "attachments_processed": 2
+      },
+      {
+        "email_id": "143997",
+        "subject": "RE: Urgente: envío de documentos pendientes para procesamiento de cuenta de cobro de junio y julio",
+        "sender": "Juan Carlos Bulla Mendez <juan.bulla@tiglobal.com.co>",
+        "date": "2025-08-25 19:57:17",
+        "attachments_processed": 5
+      }
+    ],
+    "failed": [],
+    "summary": {}
+  }
+}
