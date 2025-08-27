@@ -158,12 +158,19 @@ class ConfigManager:
                 "end_date": config.get("search_parameters", {}).get("end_date"),
                 "skip_processed": True,
                 "min_attachment_size_kb": 1,
-                "max_attachment_size_mb": 10,
+                "max_attachment_size_mb": 20,
                 "allowed_extensions": [
                     ".pdf", ".xml", ".xlsx", ".xls",
                     ".doc", ".docx", ".txt", ".csv"
                 ],
                 "folder_name": config.get("search_parameters", {}).get("folder_name", "Documentos_Procesados_2025")
+            },
+            
+            "search_parameters": {
+                "start_date": config.get("search_parameters", {}).get("start_date"),
+                "end_date": config.get("search_parameters", {}).get("end_date"),
+                "keywords": config.get("search_parameters", {}).get("keywords", []),
+                # ... resto de search_parameters
             },
             
             # Configuración de categorías

@@ -118,12 +118,12 @@ class DocuFindProcessor:
         except Exception as e:
             self.logger.error(f"❌ Error inicializando componentes: {e}")
             raise
-    
+        
     def process_emails(self, 
-                      date_from: Optional[datetime] = None,
-                      date_to: Optional[datetime] = None,
-                      query: Optional[str] = None,
-                      limit: Optional[int] = None) -> Dict[str, Any]:
+                    date_from: Optional[datetime] = None,
+                    date_to: Optional[datetime] = None,
+                    query: Optional[str] = None,
+                    limit: Optional[int] = None) -> Dict[str, Any]:
         """
         Procesa correos electrónicos según los filtros especificados
         
@@ -141,13 +141,48 @@ class DocuFindProcessor:
         self.logger.info("📬 INICIANDO PROCESAMIENTO DE CORREOS")
         self.logger.info("=" * 60)
         
-        # Configurar fechas por defecto
+        # CORRECCIÓN: Usar fechas del config si no se especifican
+        if not date_from or not date_to:
+            # Intentar obtener fechas del config
+            filters_config = self.config.get('filters', {})
+            
+            # Buscar en filters primero
+            config_start = filters_config.get('start_date')
+            config_end = filters_config.get('end_date')
+            
+            # Si no están en filters, buscar en search_parameters (tu estructura)
+            if not config_start or not config_end:
+                search_params = self.config.get('search_parameters', {})
+                config_start = search_params.get('start_date')
+                config_end = search_params.get('end_date')
+            
+            # Parsear fechas del config si existen
+            if config_start and not date_from:
+                try:
+                    date_from = datetime.strptime(config_start, '%Y-%m-%d')
+                    self.logger.info(f"📅 Usando fecha inicial del config: {config_start}")
+                except ValueError:
+                    self.logger.warning(f"⚠️ Fecha inicial inválida en config: {config_start}")
+                    date_from = datetime.now() - timedelta(days=30)
+            
+            if config_end and not date_to:
+                try:
+                    date_to = datetime.strptime(config_end, '%Y-%m-%d')
+                    self.logger.info(f"📅 Usando fecha final del config: {config_end}")
+                except ValueError:
+                    self.logger.warning(f"⚠️ Fecha final inválida en config: {config_end}")
+                    date_to = datetime.now()
+        
+        # Si aún no hay fechas, usar valores por defecto
         if not date_from:
             date_from = datetime.now() - timedelta(days=30)
+            self.logger.info("📅 Usando fecha por defecto: últimos 30 días")
+        
         if not date_to:
             date_to = datetime.now()
         
         self.logger.info(f"📅 Periodo: {date_from.strftime('%Y-%m-%d')} a {date_to.strftime('%Y-%m-%d')}")
+    
         
         results = {
             'success': [],

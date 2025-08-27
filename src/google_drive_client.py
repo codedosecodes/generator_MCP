@@ -902,17 +902,120 @@ class GoogleDriveClient:
 #                logger.error(f"⚠️ Error agregando headers: {e}")
 
 
+#    def _add_spreadsheet_headers(self, spreadsheet_id: str):
+#        """Agrega headers a una hoja de cálculo nueva"""
+#        if not self.sheets_service:
+#            if not self.authenticate():
+#                return False
+#        
+#        try:
+#            # Headers completos para todos los campos
+#            headers = [
+#                'Fecha Procesamiento',
+#                'Fecha Email',
+#                'Remitente',
+#                'Asunto',
+#                'Tiene Adjuntos',
+#                'Cantidad Adjuntos',
+#                'Nombres Adjuntos',
+#                'Fecha Factura',
+#                'Proveedor',
+#                'Número Factura',
+#                'Concepto',
+#                'Subtotal',
+#                'Impuestos',
+#                'Total',
+#                'Moneda',
+#                'Método Pago',
+#                'Categoría',
+#                'Estado',
+#                'Confianza',
+#                'Link Archivo'
+#            ]
+#            
+#            # Preparar datos para actualizar
+#            body = {'values': [headers]}
+#            
+#            # Actualizar la primera fila con headers
+#            self.sheets_service.spreadsheets().values().update(
+#                spreadsheetId=spreadsheet_id,
+#                range='Datos!A1:T1',  # 20 columnas
+#                valueInputOption='RAW',
+#                body=body
+#            ).execute()
+#            
+#            # Formatear la primera fila
+#            requests = [{
+#                'repeatCell': {
+#                    'range': {
+#                        'sheetId': 0,
+#                        'startRowIndex': 0,
+#                        'endRowIndex': 1
+#                    },
+#                    'cell': {
+#                        'userEnteredFormat': {
+#                            'textFormat': {
+#                                'bold': True,
+#                                'fontSize': 11
+#                            },
+#                            'backgroundColor': {
+#                                'red': 0.9,
+#                                'green': 0.9,
+#                                'blue': 0.95
+#                            },
+#                            'horizontalAlignment': 'CENTER'
+#                        }
+#                    },
+#                    'fields': 'userEnteredFormat'
+#                }
+#            },
+#            {
+#                'autoResizeDimensions': {
+#                    'dimensions': {
+#                        'sheetId': 0,
+#                        'dimension': 'COLUMNS',
+#                        'startIndex': 0,
+#                        'endIndex': 20
+#                    }
+#                }
+#            },
+#            {
+#                'updateSheetProperties': {
+#                    'properties': {
+#                        'sheetId': 0,
+#                        'gridProperties': {
+#                            'frozenRowCount': 1
+#                        }
+#                    },
+#                    'fields': 'gridProperties.frozenRowCount'
+#                }
+#            }]
+#            
+#            body = {'requests': requests}
+#            self.sheets_service.spreadsheets().batchUpdate(
+#                spreadsheetId=spreadsheet_id,
+#                body=body
+#            ).execute()
+#            
+#            logger.info("✅ Headers agregados y formateados correctamente")
+#            return True
+#            
+#        except Exception as e:
+#            logger.error(f"⚠️ Error agregando headers: {e}")
+#            return False
+
+
     def _add_spreadsheet_headers(self, spreadsheet_id: str):
-        """Agrega headers a una hoja de cálculo nueva"""
+        """Agrega headers a una hoja de cálculo nueva con detección automática de sheetId"""
         if not self.sheets_service:
             if not self.authenticate():
                 return False
         
         try:
-            # Headers completos para todos los campos
+            # PASO 1: Primero agregar los headers sin formato
             headers = [
                 'Fecha Procesamiento',
-                'Fecha Email',
+                'Fecha Email', 
                 'Remitente',
                 'Asunto',
                 'Tiene Adjuntos',
@@ -933,76 +1036,112 @@ class GoogleDriveClient:
                 'Link Archivo'
             ]
             
-            # Preparar datos para actualizar
+            # Actualizar los headers primero
             body = {'values': [headers]}
             
-            # Actualizar la primera fila con headers
             self.sheets_service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
-                range='Datos!A1:T1',  # 20 columnas
+                range='Datos!A1:T1',
                 valueInputOption='RAW',
                 body=body
             ).execute()
             
-            # Formatear la primera fila
-            requests = [{
-                'repeatCell': {
-                    'range': {
-                        'sheetId': 0,
-                        'startRowIndex': 0,
-                        'endRowIndex': 1
-                    },
-                    'cell': {
-                        'userEnteredFormat': {
-                            'textFormat': {
-                                'bold': True,
-                                'fontSize': 11
-                            },
-                            'backgroundColor': {
-                                'red': 0.9,
-                                'green': 0.9,
-                                'blue': 0.95
-                            },
-                            'horizontalAlignment': 'CENTER'
-                        }
-                    },
-                    'fields': 'userEnteredFormat'
-                }
-            },
-            {
-                'autoResizeDimensions': {
-                    'dimensions': {
-                        'sheetId': 0,
-                        'dimension': 'COLUMNS',
-                        'startIndex': 0,
-                        'endIndex': 20
-                    }
-                }
-            },
-            {
-                'updateSheetProperties': {
-                    'properties': {
-                        'sheetId': 0,
-                        'gridProperties': {
-                            'frozenRowCount': 1
-                        }
-                    },
-                    'fields': 'gridProperties.frozenRowCount'
-                }
-            }]
+            logger.info("✅ Headers agregados")
             
-            body = {'requests': requests}
-            self.sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body=body
-            ).execute()
+            # PASO 2: Obtener información de la hoja para obtener el sheetId correcto
+            try:
+                spreadsheet = self.sheets_service.spreadsheets().get(
+                    spreadsheetId=spreadsheet_id
+                ).execute()
+                
+                # Buscar el sheet llamado 'Datos' o tomar el primero
+                sheet_id = None
+                for sheet in spreadsheet.get('sheets', []):
+                    sheet_props = sheet.get('properties', {})
+                    if sheet_props.get('title') == 'Datos':
+                        sheet_id = sheet_props.get('sheetId')
+                        break
+                
+                # Si no encontramos 'Datos', usar el primer sheet
+                if sheet_id is None and spreadsheet.get('sheets'):
+                    sheet_id = spreadsheet['sheets'][0]['properties']['sheetId']
+                
+                # PASO 3: Si tenemos el sheetId, aplicar formato
+                if sheet_id is not None:
+                    logger.info(f"📋 Usando sheetId: {sheet_id}")
+                    
+                    requests = [
+                        {
+                            'repeatCell': {
+                                'range': {
+                                    'sheetId': sheet_id,  # Usar el ID correcto
+                                    'startRowIndex': 0,
+                                    'endRowIndex': 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': 20
+                                },
+                                'cell': {
+                                    'userEnteredFormat': {
+                                        'textFormat': {
+                                            'bold': True,
+                                            'fontSize': 11
+                                        },
+                                        'backgroundColor': {
+                                            'red': 0.85,
+                                            'green': 0.85,
+                                            'blue': 0.95
+                                        },
+                                        'horizontalAlignment': 'CENTER',
+                                        'verticalAlignment': 'MIDDLE'
+                                    }
+                                },
+                                'fields': 'userEnteredFormat(textFormat,backgroundColor,horizontalAlignment,verticalAlignment)'
+                            }
+                        },
+                        {
+                            'autoResizeDimensions': {
+                                'dimensions': {
+                                    'sheetId': sheet_id,  # Usar el ID correcto
+                                    'dimension': 'COLUMNS',
+                                    'startIndex': 0,
+                                    'endIndex': 20
+                                }
+                            }
+                        },
+                        {
+                            'updateSheetProperties': {
+                                'properties': {
+                                    'sheetId': sheet_id,  # Usar el ID correcto
+                                    'gridProperties': {
+                                        'frozenRowCount': 1
+                                    }
+                                },
+                                'fields': 'gridProperties.frozenRowCount'
+                            }
+                        }
+                    ]
+                    
+                    body = {'requests': requests}
+                    self.sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=spreadsheet_id,
+                        body=body
+                    ).execute()
+                    
+                    logger.info("✅ Formato aplicado a headers")
+                else:
+                    logger.warning("⚠️ No se pudo obtener sheetId, headers sin formato")
+                    
+            except Exception as format_error:
+                # Si falla el formateo, no es crítico
+                logger.warning(f"⚠️ No se pudo aplicar formato: {format_error}")
+                logger.info("✅ Headers agregados sin formato (no crítico)")
             
-            logger.info("✅ Headers agregados y formateados correctamente")
             return True
             
         except Exception as e:
-            logger.error(f"⚠️ Error agregando headers: {e}")
+            logger.error(f"❌ Error agregando headers: {e}")
             return False
+
 
     #def _update_spreadsheet(self, email_data: Dict, invoice_data: Dict, file_id: str, attachments_info: Dict):
     #        """
