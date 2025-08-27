@@ -13,10 +13,6 @@
 #   for intelligent document processing and cloud integration.
 # ===========================================================
 
-"""
-DOCUFIND - Procesador Inteligente de Correos y Facturas
-Punto de entrada principal de la aplicación
-"""
 
 import os
 import sys
@@ -132,7 +128,7 @@ class DocuFindProcessor:
         except Exception as e:
             self.logger.error(f"❌ Error inicializando componentes: {e}")
             raise
-        
+         
     def process_emails(self, 
                     date_from: Optional[datetime] = None,
                     date_to: Optional[datetime] = None,
@@ -267,44 +263,6 @@ class DocuFindProcessor:
         
         return params
     
-    #def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
-    #    """Procesa un correo individual"""
-    #    try:
-    #        self.logger.info(f"\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
-    #        self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
-    #        self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
-    #        
-    #        self.stats['emails_procesados'] += 1
-    #        
-    #        # Extraer adjuntos
-    #        attachments = self.email_processor.get_attachments(email['id'])
-    #        
-    #        if not attachments:
-    #            self.logger.info("  ⚠️ No se encontraron adjuntos")
-    #            return
-    #        
-    #        self.logger.info(f"  📎 {len(attachments)} adjuntos encontrados")
-    #        
-    #        # Procesar cada adjunto
-    #        for attachment in attachments:
-    #            self._process_attachment(email, attachment, results)
-    #        
-    #        results['success'].append({
-    #            'email_id': email['id'],
-    #            'subject': email.get('subject'),
-    #            'sender': email.get('sender'),
-    #            'date': email.get('date'),
-    #            'attachments_processed': len(attachments)
-    #        })
-    #        
-    #    except Exception as e:
-    #        self.logger.error(f"  ❌ Error procesando correo: {e}")
-    #        self.stats['errores'] += 1
-    #        results['failed'].append({
-    #            'email_id': email.get('id'),
-    #            'subject': email.get('subject'),
-    #            'error': str(e)
-    #        })
     def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
         """Procesa un correo individual"""
         try:
@@ -374,32 +332,7 @@ class DocuFindProcessor:
             self.logger.error(f"    ❌ Error procesando adjunto: {e}")
             self.stats['errores'] += 1
                 
-    #def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
-    #    """Procesa un adjunto individual"""
-    #    try:
-    #        filename = attachment.get('filename', 'archivo_sin_nombre')
-    #        self.logger.info(f"    📄 Procesando: {filename}")
-    #        
-    #        # Verificar si es una factura
-    #        if self._is_invoice(filename):
-    #            # Extraer datos de la factura
-    #            invoice_data = self.invoice_extractor.extract(attachment['content'])
-    #            
-    #            if invoice_data:
-    #                self.logger.info(f"      ✅ Datos extraídos: {invoice_data.get('invoice_number', 'N/A')}")
-    #                self.stats['facturas_extraidas'] += 1
-    #                
-    #                # Organizar en Google Drive
-    #                self._organize_in_drive(email, attachment, invoice_data)
-    #            else:
-    #                self.logger.warning(f"      ⚠️ No se pudieron extraer datos")
-    #        else:
-    #            # Subir archivo tal cual
-    #            self._upload_to_drive(email, attachment)
-    #        
-    #    except Exception as e:
-    #        self.logger.error(f"    ❌ Error procesando adjunto: {e}")
-    #        self.stats['errores'] += 1
+    
     
     def _is_invoice(self, filename: str) -> bool:
         """Determina si un archivo es una factura"""
@@ -416,37 +349,7 @@ class DocuFindProcessor:
         
         return has_keyword or has_valid_extension
     
-#    def _organize_in_drive(self, email: Dict, attachment: Dict, invoice_data: Dict):
-#        """Organiza una factura en Google Drive"""
-#        try:
-#            # Crear estructura de carpetas basada en fecha
-#            date = datetime.strptime(email.get('date', ''), '%Y-%m-%d')
-#            folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Facturas"
-#            
-#            # Crear carpetas si no existen
-#            folder_id = self.drive_client.create_folder_path(folder_path)
-#            
-#            # Renombrar archivo con datos de factura
-#            new_filename = self._generate_filename(invoice_data, attachment['filename'])
-#            
-#            # Subir archivo
-#            file_id = self.drive_client.upload_file(
-#                attachment['content'],
-#                new_filename,
-#                folder_id,
-#                invoice_data
-#            )
-#            
-#            if file_id:
-#                self.logger.info(f"      ✅ Subido a Drive: {new_filename}")
-#                self.stats['archivos_subidos'] += 1
-#                
-#                # Actualizar hoja de cálculo
-#                self._update_spreadsheet(invoice_data, file_id)
-#            
-#        except Exception as e:
-#            self.logger.error(f"      ❌ Error organizando en Drive: {e}")
-#            raise
+
  
     def _organize_in_drive(self, email: Dict, attachment: Dict, invoice_data: Dict):
         """
@@ -535,32 +438,7 @@ class DocuFindProcessor:
             traceback.print_exc()
             raise
             
-        #    # Crear estructura de carpetas basada en fecha
-        #    folder_path = f"DOCUFIND/{date.year}/{date.strftime('%m-%B')}/Facturas"
-        #    # Crear carpetas si no existen
-        #    folder_id = self.drive_client.create_folder_path(folder_path)
-        #    
-        #    # Renombrar archivo con datos de factura
-        #    new_filename = self._generate_filename(invoice_data, attachment['filename'])
-        #    
-        #    # Subir archivo
-        #    file_id = self.drive_client.upload_file(
-        #        attachment['content'],
-        #        new_filename,
-        #        folder_id,
-        #        invoice_data
-        #    )
-        #    
-        #    if file_id:
-        #        self.logger.info(f"      ✅ Subido a Drive: {new_filename}")
-        #        self.stats['archivos_subidos'] += 1
-        #        
-        #        # Actualizar hoja de cálculo
-        #        self._update_spreadsheet(invoice_data, file_id)
-        #    
-        #except Exception as e:
-        #   self.logger.error(f"      ❌ Error organizando en Drive: {e}")
-        #   raise
+     
            
     def _upload_to_drive(self, email: Dict, attachment: Dict):
         """Sube un archivo no-factura a Google Drive"""
@@ -618,103 +496,7 @@ class DocuFindProcessor:
     
     
     
-    #def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
-    #    """Actualiza la hoja de cálculo con los datos de la factura"""
-    #    try:
-    #        # Buscar o crear hoja de cálculo
-    #        spreadsheet_id = self.drive_client.get_or_create_spreadsheet(
-    #            "DOCUFIND_Facturas_2024"
-    #        )
-    #        
-    #        # Preparar fila de datos
-    #        row_data = [
-    #            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-    #            invoice_data.get('date', ''),
-    #            invoice_data.get('vendor', ''),
-    #            invoice_data.get('invoice_number', ''),
-    #            invoice_data.get('subtotal', ''),
-    #            invoice_data.get('tax', ''),
-    #            invoice_data.get('total', ''),
-    #            invoice_data.get('currency', 'MXN'),
-    #            invoice_data.get('payment_method', ''),
-    #            invoice_data.get('status', 'Procesado'),
-    #            f"https://drive.google.com/file/d/{file_id}/view"
-    #        ]
-    #        
-    #        # Agregar fila a la hoja
-    #        self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data)
-    #        self.logger.info(f"        ✅ Datos agregados a hoja de cálculo")
-    #        
-    #    except Exception as e:
-    #        self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
     
-    #def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
-    #    """Actualiza la hoja de cálculo con los datos de la factura"""
-    #    try:
-    #        # Buscar o crear hoja de cálculo en carpeta raíz DOCUFIND
-    #        spreadsheet_name = f"DOCUFIND_Facturas_{datetime.now().year}"
-#
-    #        # Primero crear la carpeta raíz si no existe
-    #        root_folder_id = self.drive_client.create_folder("DOCUFIND")
-#
-    #        if not root_folder_id:
-    #            self.logger.error("❌ No se pudo crear/obtener carpeta DOCUFIND")
-    #            return
-#
-    #        # Crear o obtener spreadsheet EN la carpeta DOCUFIND
-    #        spreadsheet_id = self.drive_client.get_or_create_spreadsheet(
-    #            spreadsheet_name, 
-    #            root_folder_id  # Importante: pasar el ID de la carpeta
-    #        )
-#
-    #        if not spreadsheet_id:
-    #            self.logger.error("❌ No se pudo crear/obtener hoja de cálculo")
-    #            return
-#
-    #        # Preparar fila de datos
-    #        # Obtener información del email actual si está disponible
-    #        email_info = getattr(self, 'current_email', {})
-    #        attachments_info = getattr(self, 'current_attachments', {})
-#
-    #        row_data = [
-    #            # Información del procesamiento y email
-    #            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Fecha procesamiento
-    #            email_info.get('date', ''),                     # Fecha del email
-    #            email_info.get('sender', ''),                   # Remitente
-    #            email_info.get('subject', ''),                  # Asunto
-    #            'Sí' if attachments_info else 'No',             # Tiene adjuntos
-    #            str(len(attachments_info)) if attachments_info else '0',  # Cantidad
-    #            ', '.join([a.get('filename', '') for a in attachments_info]) if attachments_info else '',  # Nombres
-#
-    #            # Información de la factura
-    #            invoice_data.get('invoice_date', invoice_data.get('date', '')),
-    #            invoice_data.get('vendor', ''),
-    #            invoice_data.get('invoice_number', ''),
-    #            invoice_data.get('concept', ''),
-    #            str(invoice_data.get('subtotal', '')),
-    #            str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
-    #            str(invoice_data.get('amount', invoice_data.get('total', ''))),
-    #            invoice_data.get('currency', 'MXN'),
-    #            invoice_data.get('payment_method', ''),
-#
-    #            # Información adicional
-    #            invoice_data.get('category', 'Sin categoría'),
-    #            invoice_data.get('status', 'Procesado'),
-    #            f"{invoice_data.get('confidence', 0):.1%}" if invoice_data.get('confidence') else 'N/A',
-    #            f"https://drive.google.com/file/d/{file_id}/view" if file_id else '',
-    #            invoice_data.get('notes', '')
-    #        ]
-#
-    #        # Agregar fila a la hoja
-    #        if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
-    #            self.logger.info(f"        ✅ Datos agregados a hoja de cálculo")
-    #        else:
-    #            self.logger.error(f"        ❌ Error agregando datos a spreadsheet")
-#
-    #    except Exception as e:
-    #        self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
-    #        import traceback
-    #        traceback.print_exc()
 
 
 
