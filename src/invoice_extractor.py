@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# 
+# ===========================================================
+# invoice_extractor.py
+# Part of the DOCUFIND Project (MCP-based Document Processor)
+#
+# Author: Gabriel Mauricio Cortés
+# Created on: 24/12/2024
+# License: MIT
+# Description:
+#   This module is part of an academic extracurricular project
+#   that demonstrates the use of Model Context Protocol (MCP)
+#   for intelligent document processing and cloud integration.
+# ===========================================================
+
 """
 Invoice Extractor - DOCUFIND
 Extrae datos inteligentes de facturas de emails y adjuntos
@@ -172,26 +186,90 @@ class InvoiceExtractor:
             'miscellaneous': ['otros', 'other', 'misc', 'general']
         }
     
+    #def extract(self, content: Any) -> Optional[Dict[str, Any]]:
+    #    """
+    #    Extrae datos de factura del contenido
+    #    
+    #    Args:
+    #        content: Contenido a procesar (texto, bytes, o dict)
+    #        
+    #    Returns:
+    #        Diccionario con datos extraídos o None
+    #    """
+    #    try:
+    #        # Convertir contenido a texto si es necesario
+    #        text = self._content_to_text(content)
+    #        
+    #        if not text:
+    #            logger.warning("⚠️ No se pudo obtener texto del contenido")
+    #            return None
+    #        
+    #        # Extraer datos usando patrones
+    #        extracted_data = self._extract_with_patterns(text)
+    #        
+    #        # Mejorar datos con análisis contextual
+    #        enhanced_data = self._enhance_with_context(extracted_data, text)
+    #        
+    #        # Calcular confianza
+    #        enhanced_data['confidence'] = self._calculate_confidence(enhanced_data)
+    #        
+    #        # Categorizar
+    #        enhanced_data['category'] = self._categorize_invoice(enhanced_data, text)
+    #        
+    #        logger.info(f"✅ Datos extraídos con {enhanced_data['confidence']:.0%} de confianza")
+    #        
+    #        return enhanced_data
+    #        
+    #    except Exception as e:
+    #        logger.error(f"❌ Error extrayendo datos: {e}")
+    #        return None
+    
     def extract(self, content: Any) -> Optional[Dict[str, Any]]:
         """
         Extrae datos de factura del contenido
-        
-        Args:
-            content: Contenido a procesar (texto, bytes, o dict)
-            
-        Returns:
-            Diccionario con datos extraídos o None
         """
         try:
-            # Convertir contenido a texto si es necesario
+            # Convertir contenido a texto
             text = self._content_to_text(content)
             
             if not text:
                 logger.warning("⚠️ No se pudo obtener texto del contenido")
                 return None
             
+            # CORRECCIÓN: Limpiar el texto antes de procesar
+            # Eliminar caracteres no imprimibles
+            text = ''.join(char for char in text if char.isprintable() or char.isspace())
+            
+            # Reemplazar múltiples espacios
+            text = ' '.join(text.split())
+            
             # Extraer datos usando patrones
             extracted_data = self._extract_with_patterns(text)
+            
+            # CORRECCIÓN: Limpiar datos extraídos
+            for key, value in extracted_data.items():
+                if isinstance(value, str):
+                    # Eliminar caracteres extraños
+                    value = value.encode('ascii', 'ignore').decode('ascii')
+                    # Limpiar espacios
+                    value = ' '.join(value.split())
+                    # Limitar longitud
+                    if len(value) > 200:
+                        value = value[:197] + '...'
+                    extracted_data[key] = value
+            
+            # Si no se encontraron datos, crear valores por defecto
+            if not extracted_data.get('vendor'):
+                # Intentar obtener vendor del remitente del email
+                if hasattr(self, 'current_email_sender'):
+                    extracted_data['vendor'] = self.current_email_sender
+            
+            if not extracted_data.get('concept'):
+                extracted_data['concept'] = 'Documento adjunto'
+            
+            if not extracted_data.get('invoice_number'):
+                # Generar un número basado en timestamp
+                extracted_data['invoice_number'] = f"DOC-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             
             # Mejorar datos con análisis contextual
             enhanced_data = self._enhance_with_context(extracted_data, text)
@@ -202,13 +280,19 @@ class InvoiceExtractor:
             # Categorizar
             enhanced_data['category'] = self._categorize_invoice(enhanced_data, text)
             
-            logger.info(f"✅ Datos extraídos con {enhanced_data['confidence']:.0%} de confianza")
+            logger.info(f"✅ Datos extraídos: {enhanced_data.get('vendor', 'N/A')}")
             
             return enhanced_data
             
         except Exception as e:
             logger.error(f"❌ Error extrayendo datos: {e}")
-            return None
+            # Retornar datos mínimos
+            return {
+                'vendor': 'Error en extracción',
+                'concept': 'Error procesando documento',
+                'invoice_number': f"ERR-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                'confidence': 0.0
+            }
     
     def _content_to_text(self, content: Any) -> str:
         """Convierte diferentes tipos de contenido a texto"""

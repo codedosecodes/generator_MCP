@@ -1,11 +1,11 @@
 {
-  "fecha_procesamiento": "2025-08-26T14:50:28.263562",
+  "fecha_procesamiento": "2025-08-27T13:34:29.208632",
   "estadisticas": {
     "emails_procesados": 26,
     "facturas_extraidas": 0,
     "archivos_subidos": 17,
-    "errores": 0,
-    "tiempo_inicio": "2025-08-26 14:46:29.783897",
+    "errores": 17,
+    "tiempo_inicio": "2025-08-27 13:32:24.461879",
     "tiempo_fin": null
   },
   "exitosos": 8,

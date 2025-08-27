@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# 
+# ===========================================================
+# test_google_services.py
+# Part of the DOCUFIND Project (MCP-based Document Processor)
+#
+# Author: Gabriel Mauricio Cortés
+# Created on: 24/12/2024
+# License: MIT
+# Description:
+#   This module is part of an academic extracurricular project
+#   that demonstrates the use of Model Context Protocol (MCP)
+#   for intelligent document processing and cloud integration.
+# ===========================================================
+
 """
 Test Google Services - DOCUFIND
 Prueba completa de los servicios de Google Drive y Sheets

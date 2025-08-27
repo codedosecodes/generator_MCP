@@ -1,3 +1,17 @@
+# 
+# ===========================================================
+# test_google_auth.py
+# Part of the DOCUFIND Project (MCP-based Document Processor)
+#
+# Author: Gabriel Mauricio Cortés
+# Created on: 24/12/2024
+# License: MIT
+# Description:
+#   This module is part of an academic extracurricular project
+#   that demonstrates the use of Model Context Protocol (MCP)
+#   for intelligent document processing and cloud integration.
+# ===========================================================
+
 ﻿# test_google_auth.py - Probar autenticación con Google
 import os
 import json

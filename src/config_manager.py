@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# 
+# ===========================================================
+# config_manager.py
+# Part of the DOCUFIND Project (MCP-based Document Processor)
+#
+# Author: Gabriel Mauricio Cortés
+# Created on: 24/12/2024
+# License: MIT
+# Description:
+#   This module is part of an academic extracurricular project
+#   that demonstrates the use of Model Context Protocol (MCP)
+#   for intelligent document processing and cloud integration.
+# ===========================================================
+
 """
 Config Manager - DOCUFIND
 Gestor de configuración compatible con tu estructura actual
@@ -97,6 +111,9 @@ class ConfigManager:
                 "create_month_folders": True,
                 "upload_reports": True
             },
+            "spreadsheet_name": config.get("google_services", {}).get("spreadsheet_name"),
+            "spreadsheet_name_pattern": config.get("google_services", {}).get("spreadsheet_name_pattern"),
+            "spreadsheet_prefix": config.get("google_services", {}).get("spreadsheet_prefix", "DOCUFIND_Facturas"),
             
             # Configuración de extracción
             "extraction": {

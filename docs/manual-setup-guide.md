@@ -1,456 +1,143 @@
-# 📝 Instalación Manual - FIND_DOCUMENTS
+@echo off
+:: git_menu.bat - Interactive menu for FIND_DOCUMENTS (ANSI encoding)
+title Git Menu - FIND_DOCUMENTS
+color 0B
+chcp 65001 >nul
+setlocal enabledelayedexpansion
 
-## 🗂️ Paso 1: Crear Estructura de Carpetas
+:MAIN_MENU
+cls
+echo.
+echo ========================================================
+echo                Git Menu - FIND_DOCUMENTS              
+echo ========================================================
+echo   Location: %CD%
+echo   Date: %date% - Time: %time%                           
+echo   Repo: https://github.com/codedosecodes/generator_MCP    
+echo ========================================================
+echo.
 
-```powershell
-# Abrir PowerShell y navegar a tu directorio de trabajo
-cd "C:\DevOps\DOTNET CLI\mcp"
-
-# Crear carpeta principal del proyecto
-mkdir FIND_DOCUMENTS
-cd FIND_DOCUMENTS
-
-# Crear estructura de carpetas
-mkdir src
-mkdir tests
-mkdir scripts
-mkdir config
-mkdir logs
-mkdir temp
-mkdir docs
-mkdir examples
-mkdir "examples\sample_configs"
-
-# Verificar estructura creada
-tree /F
-```
-
-## 🐍 Paso 2: Configurar Entorno Virtual de Python
-
-```powershell
-# Verificar que Python esté instalado
-python --version
-# Debería mostrar algo como: Python 3.11.x
-
-# Crear entorno virtual
-python -m venv venv_find_docs
-
-# Activar entorno virtual
-venv_find_docs\Scripts\activate
-
-# Verificar que está activado (debería mostrar (venv_find_docs) al inicio)
-# Tu prompt se verá así: (venv_find_docs) PS C:\DevOps\DOTNET CLI\mcp\FIND_DOCUMENTS>
-```
-
-## 📦 Paso 3: Instalar Dependencias
-
-### Dependencias Básicas (Obligatorias)
-```powershell
-# Actualizar pip
-python -m pip install --upgrade pip
-
-# Instalar dependencias core una por una
-pip install google-auth
-pip install google-auth-oauthlib
-pip install google-api-python-client
-pip install pandas
-pip install openpyxl
-pip install python-dotenv
-```
-
-### Dependencias Adicionales (Recomendadas)
-```powershell
-# Para interfaz mejorada
-pip install tqdm
-pip install colorama
-
-# Para procesamiento de documentos
-pip install PyPDF2
-pip install python-docx
-pip install Pillow
-```
-
-### Dependencias de Testing (Opcional)
-```powershell
-# Solo si vas a hacer desarrollo
-pip install pytest
-pip install pytest-asyncio
-```
-
-### Verificar Instalación
-```powershell
-# Probar que todo se instaló correctamente
-python -c "import google.auth, pandas, openpyxl; print('✅ Dependencias básicas OK')"
-
-# Ver lista completa de paquetes instalados
-pip list
-```
-
-## 📄 Paso 4: Crear Archivos de Configuración
-
-### 4.1 Crear requirements.txt
-```powershell
-# Crear archivo requirements.txt
-@"
-# FIND_DOCUMENTS - Dependencias Core
-google-auth>=2.15.0
-google-auth-oauthlib>=0.8.0
-google-api-python-client>=2.100.0
-gspread>=5.11.0
-pandas>=1.5.0
-openpyxl>=3.1.0
-python-dateutil>=2.8.2
-python-dotenv>=1.0.0
-requests>=2.28.0
-tqdm>=4.65.0
-colorama>=0.4.6
-PyPDF2>=3.0.0
-python-docx>=0.8.11
-Pillow>=9.5.0
-pytest>=7.0.0
-pytest-asyncio>=0.21.0
-"@ | Out-File -FilePath "requirements.txt" -Encoding UTF8
-```
-
-### 4.2 Crear .env.template
-```powershell
-@"
-# Configuración de Email
-EMAIL_USERNAME=tu-email@gmail.com
-EMAIL_PASSWORD=tu-app-password-aqui
-
-# Google APIs
-GOOGLE_CREDENTIALS_PATH=./config/credentials.json
-GOOGLE_TOKEN_PATH=./config/token.json
-
-# Configuración del proyecto
-PROJECT_NAME=FIND_DOCUMENTS
-DEFAULT_FOLDER_NAME=Documentos_Procesados
-LOG_LEVEL=INFO
-
-# Configuraciones opcionales
-MAX_EMAILS_PER_BATCH=100
-ENABLE_DEBUG_MODE=false
-AUTO_SEND_REPORT=true
-
-# Rutas de trabajo
-TEMP_DIR=./temp
-LOGS_DIR=./logs
-CONFIG_DIR=./config
-"@ | Out-File -FilePath ".env.template" -Encoding UTF8
-```
-
-### 4.3 Crear config.json.template
-```powershell
-@"
-{
-  "email_credentials": {
-    "server": "imap.gmail.com",
-    "port": 993,
-    "username": "tu-email@gmail.com",
-    "password": "tu-app-password"
-  },
-  "search_parameters": {
-    "start_date": "2024-01-01",
-    "end_date": "2024-12-31",
-    "keywords": [
-      "factura",
-      "invoice",
-      "bill",
-      "receipt",
-      "payment"
-    ],
-    "folder_name": "Facturas_2024"
-  },
-  "processing_options": {
-    "max_emails": 1000,
-    "enable_ai_extraction": true,
-    "create_backup": true,
-    "send_completion_report": true
-  },
-  "google_services": {
-    "credentials_path": "./config/credentials.json",
-    "token_path": "./config/token.json",
-    "drive_folder_root": "FIND_DOCUMENTS"
-  },
-  "notification_settings": {
-    "email_reports": true,
-    "progress_updates": true,
-    "error_notifications": true
-  }
-}
-"@ | Out-File -FilePath "config.json.template" -Encoding UTF8
-```
-
-### 4.4 Crear .gitignore
-```powershell
-@"
-# Entorno virtual
-venv_find_docs/
-env/
-ENV/
-
-# Archivos de configuración sensibles
-.env
-config/credentials.json
-config/token.json
-config/config.json
-
-# Logs
-logs/*.log
-*.log
-
-# Archivos temporales
-temp/*
-!temp/.gitkeep
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# Archivos del sistema
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# IDEs
-.vscode/settings.json
-.idea/
-*.swp
-*.swo
-
-# Archivos de prueba
-test_data/
-sample_emails/
-
-# Documentos procesados
-processed_documents/
-output/
-
-# Respaldos
-backup/
-*.bak
-"@ | Out-File -FilePath ".gitignore" -Encoding UTF8
-```
-
-### 4.5 Crear README.md
-```powershell
-@"
-# 🚀 FIND_DOCUMENTS - Procesador Inteligente de Correos y Facturas
-
-Sistema automatizado para procesar correos electrónicos, extraer facturas y organizarlas en Google Drive.
-
-## ✨ Características Principales
-
-- 📧 **Búsqueda inteligente** de correos con filtros avanzados
-- 🤖 **Extracción automática** de datos de facturas
-- 📁 **Organización automática** en Google Drive por fecha
-- 📊 **Hojas de cálculo automáticas** con datos procesados
-- 📈 **Reportes en tiempo real** con estadísticas de progreso
-- 📬 **Notificaciones automáticas** por email al finalizar
-
-## 📋 Uso Básico
-
-1. Configurar credenciales en config/config.json
-2. Ejecutar: python src/find_documents_main.py
-3. Revisar resultados en Google Drive
-
-## 📖 Documentación
-
-Ver archivos en docs/ para más información.
-"@ | Out-File -FilePath "README.md" -Encoding UTF8
-```
-
-## 📄 Paso 5: Crear Archivos .gitkeep para Carpetas Vacías
-
-```powershell
-# Crear archivos .gitkeep para que Git trackee las carpetas vacías
-"" | Out-File -FilePath "temp\.gitkeep" -Encoding UTF8
-"" | Out-File -FilePath "logs\.gitkeep" -Encoding UTF8
-```
-
-## 🧪 Paso 6: Crear Script de Verificación
-
-```powershell
-# Crear script de verificación en scripts/test_installation.py
-@"
-# test_installation.py - Verificar instalación
-import sys
-import importlib
-import os
-from pathlib import Path
-
-def check_python_version():
-    version = sys.version_info
-    if version.major >= 3 and version.minor >= 9:
-        print(f"✅ Python {version.major}.{version.minor}.{version.micro} - OK")
-        return True
-    else:
-        print(f"❌ Python {version.major}.{version.minor}.{version.micro} - Necesitas Python 3.9+")
-        return False
-
-def check_packages():
-    required_packages = [
-        'google.auth',
-        'google.oauth2',
-        'googleapiclient',
-        'pandas',
-        'openpyxl',
-        'dotenv'
-    ]
+:: Check if we are inside a Git repository
+if exist ".git" (
+    echo [OK] Git repository detected
     
-    all_installed = True
-    print("\n📦 Verificando paquetes:")
-    for package in required_packages:
-        try:
-            importlib.import_module(package)
-            print(f"   ✅ {package}")
-        except ImportError:
-            print(f"   ❌ {package} - FALTANTE")
-            all_installed = False
+    :: Quick status
+    git status --porcelain > temp_status.txt 2>nul
+    set /p QUICK_STATUS=<temp_status.txt
+    del temp_status.txt 2>nul
     
-    return all_installed
-
-def check_structure():
-    required_folders = [
-        'src', 'tests', 'scripts', 'config', 
-        'logs', 'temp', 'docs', 'examples'
-    ]
+    if not "!QUICK_STATUS!"=="" (
+        echo [!] Local changes pending
+    ) else (
+        echo [OK] Repository is clean
+    )
     
-    all_exist = True
-    print("\n📁 Verificando estructura:")
-    for folder in required_folders:
-        if Path(folder).exists():
-            print(f"   ✅ {folder}/")
-        else:
-            print(f"   ❌ {folder}/ - FALTANTE")
-            all_exist = False
+    :: Check remote changes
+    git fetch origin 2>nul
+    for /f %%i in ('git rev-list HEAD..origin/main --count 2^>nul') do set BEHIND=%%i
+    for /f %%i in ('git rev-list origin/main..HEAD --count 2^>nul') do set AHEAD=%%i
     
-    return all_exist
-
-def check_config_files():
-    config_files = [
-        'requirements.txt',
-        '.env.template', 
-        'config.json.template',
-        '.gitignore',
-        'README.md'
-    ]
+    if "!BEHIND!"=="" set BEHIND=0
+    if "!AHEAD!"=="" set AHEAD=0
     
-    all_exist = True
-    print("\n📄 Verificando archivos de configuración:")
-    for file in config_files:
-        if Path(file).exists():
-            print(f"   ✅ {file}")
-        else:
-            print(f"   ❌ {file} - FALTANTE")
-            all_exist = False
-    
-    return all_exist
+    if !BEHIND! GTR 0 echo [^>] !BEHIND! commits to pull
+    if !AHEAD! GTR 0 echo [^<] !AHEAD! commits to push
+    if !BEHIND! EQU 0 if !AHEAD! EQU 0 echo [OK] Synced with GitHub
+) else (
+    echo [!] No Git repository found
+)
 
-def main():
-    print("🔍 FIND_DOCUMENTS - Verificación de Instalación")
-    print("=" * 60)
-    
-    python_ok = check_python_version()
-    packages_ok = check_packages()
-    structure_ok = check_structure()
-    config_ok = check_config_files()
-    
-    print("\n" + "=" * 60)
-    print("📊 RESUMEN:")
-    
-    if python_ok and packages_ok and structure_ok and config_ok:
-        print("🎉 ¡TODO PERFECTO! Instalación completada exitosamente")
-        print("\n🚀 Próximos pasos:")
-        print("1. Configurar Google APIs (credentials.json)")
-        print("2. Copiar .env.template a .env y configurar")
-        print("3. Copiar config.json.template a config/config.json")
-        print("4. Ejecutar el programa principal")
-    else:
-        print("❌ Instalación incompleta. Revisar errores arriba.")
-        
-        if not packages_ok:
-            print("\n💡 Para instalar paquetes faltantes:")
-            print("   pip install -r requirements.txt")
-        
-        if not structure_ok:
-            print("\n💡 Para crear carpetas faltantes, ejecutar:")
-            print("   mkdir carpeta_faltante")
+echo.
+echo ========================================================
+echo                   MAIN MENU                    
+echo ========================================================
+echo.
+echo   INITIAL CONFIGURATION:                                 
+echo   [1] Configure Git for the first time                       
+echo   [2] Initialize repository and connect to GitHub        
+echo.                                                           
+echo   PUSH CHANGES:                                         
+echo   [3] Automatic push (auto message)                  
+echo   [4] Push with custom message                       
+echo   [5] Quick interactive commit                             
+echo.                                                            
+echo   PULL CHANGES:                                     
+echo   [6] Automatic pull (fetch from server)         
+echo.                                                            
+echo   SYNCHRONIZATION:                                        
+echo   [7] Full sync (Pull + Push)                
+echo.                                                            
+echo   INFORMATION:                                           
+echo   [8] View detailed repository status                  
+echo   [9] View commit history                             
+echo   [10] View differences (unstaged changes)             
+echo.                                                            
+echo   UTILITIES:                                           
+echo   [11] Clean temporary files                          
+echo   [12] Create/Update .gitignore                          
+echo   [13] Configure Git credentials                       
+echo.                                                            
+echo   QUICK ACTIONS:                                       
+echo   [14] Full workflow (Pull - Work - Push)           
+echo   [15] Emergency backup (commit + push)         
+echo.                                                            
+echo   [0] Exit                                              
+echo.                                                            
+echo ========================================================
+echo.
 
-if __name__ == "__main__":
-    main()
-"@ | Out-File -FilePath "scripts\test_installation.py" -Encoding UTF8
-```
+set /p CHOICE="Select an option (0-15): "
 
-## ✅ Paso 7: Verificar Instalación Completa
+if "%CHOICE%"=="1" goto CONFIG_GIT
+if "%CHOICE%"=="2" goto INIT_REPO
+if "%CHOICE%"=="3" goto AUTO_PUSH
+if "%CHOICE%"=="4" goto PUSH_CUSTOM
+if "%CHOICE%"=="5" goto QUICK_COMMIT
+if "%CHOICE%"=="6" goto AUTO_PULL
+if "%CHOICE%"=="7" goto FULL_SYNC
+if "%CHOICE%"=="8" goto STATUS_DETAIL
+if "%CHOICE%"=="9" goto SHOW_LOG
+if "%CHOICE%"=="10" goto SHOW_DIFF
+if "%CHOICE%"=="11" goto CLEANUP
+if "%CHOICE%"=="12" goto CREATE_GITIGNORE
+if "%CHOICE%"=="13" goto CONFIG_CREDENTIALS
+if "%CHOICE%"=="14" goto WORKFLOW_COMPLETE
+if "%CHOICE%"=="15" goto EMERGENCY_BACKUP
+if "%CHOICE%"=="0" goto EXIT
 
-```powershell
-# Ejecutar script de verificación
-python scripts\test_installation.py
+echo [X] Invalid option. Press any key to continue...
+pause >nul
+goto MAIN_MENU
 
-# Debería mostrar algo como:
-# 🎉 ¡TODO PERFECTO! Instalación completada exitosamente
-```
+:: ===============================================================
+:: MENU FUNCTIONS
+:: ===============================================================
 
-## 🗂️ Paso 8: Crear Archivos de Configuración Personales
+:CONFIG_GIT
+cls
+echo ===============================================================
+echo                    CONFIGURE GIT
+echo ===============================================================
+echo.
 
-```powershell
-# Copiar templates a archivos reales
-Copy-Item ".env.template" ".env"
-Copy-Item "config.json.template" "config\config.json"
+echo Current config:
+git config user.name 2>nul || echo   Name: (not set)
+git config user.email 2>nul || echo   Email: (not set)
+echo.
 
-# Editar .env con tus datos reales
-notepad .env
+set /p CONFIG_NAME="Enter your full name: "
+set /p CONFIG_EMAIL="Enter your email: "
 
-# Editar config.json con tus credenciales
-notepad config\config.json
-```
+if not "%CONFIG_NAME%"=="" (
+    git config --global user.name "%CONFIG_NAME%"
+    echo [OK] Name set: %CONFIG_NAME%
+)
 
-## 🎯 Verificación Final
+if not "%CONFIG_EMAIL%"=="" (
+    git config --global user.email "%CONFIG_EMAIL%"
+    echo [OK] Email set: %CONFIG_EMAIL%
+)
 
-### Estructura Final Esperada:
-```
-FIND_DOCUMENTS/
-├── venv_find_docs/          # Entorno virtual
-├── src/                     # Código fuente (crear después)
-├── tests/                   # Tests
-├── scripts/
-│   └── test_installation.py
-├── config/
-│   └── config.json          # Tu configuración
-├── logs/
-│   └── .gitkeep
-├── temp/
-│   └── .gitkeep
-├── docs/                    # Documentación
-├── examples/                # Ejemplos
-├── requirements.txt
-├── .env                     # Tu configuración de ambiente
-├── .env.template
-├── config.json.template
-├── .gitignore
-└── README.md
-```
-
-### Comandos de Verificación:
-```powershell
-# Ver estructura
-tree /F
-
-# Verificar entorno virtual activo
-python -c "import sys; print('✅ Entorno virtual activo' if 'venv_find_docs' in sys.executable else '❌ Activar entorno virtual')"
-
-# Verificar dependencias
-python scripts\test_installation.py
-
-# Ver paquetes instalados
-pip list | findstr google
-```
-
-## 🚀 ¡Listo!
-
-Tu proyecto está configurado manualmente y listo para el desarrollo. 
-
-**¿Quieres que continuemos creando los archivos de código principal (como `src/find_documents_main.py`) o prefieres configurar primero las credenciales de Google?**
+echo.
+echo [OK] Git configuration complete
+goto PAUSE_RETURN

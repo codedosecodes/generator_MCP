@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# 
+# ===========================================================
+# google_drive_client.py
+# Part of the DOCUFIND Project (MCP-based Document Processor)
+#
+# Author: Gabriel Mauricio Cortés
+# Created on: 24/12/2024
+# License: MIT
+# Description:
+#   This module is part of an academic extracurricular project
+#   that demonstrates the use of Model Context Protocol (MCP)
+#   for intelligent document processing and cloud integration.
+# ===========================================================
+
 """
 Google Drive Client - DOCUFIND
 Cliente para interactuar con Google Drive y Sheets
@@ -553,8 +567,12 @@ class GoogleDriveClient:
                 elif isinstance(item, str):
                     # Limpiar caracteres especiales
                     clean_item = item.encode('utf-8', 'ignore').decode('utf-8')
+                    # Eliminar caracteres de control
+                    clean_item = ''.join(char for char in clean_item if char.isprintable() or char == ' ')
                     # Reemplazar saltos de línea
-                    clean_item = clean_item.replace('\\n', ' ').replace('\\r', ' ')
+                    clean_item = clean_item.replace('\\n', ' ').replace('\\r', ' ').replace('\\t', ' ')
+                    # Limpiar espacios múltiples
+                    clean_item = ' '.join(clean_item.split())
                     # Limitar longitud
                     if len(clean_item) > 500:
                         clean_item = clean_item[:497] + '...'
@@ -565,10 +583,10 @@ class GoogleDriveClient:
             # Preparar body para la API
             body = {'values': [cleaned_data]}
             
-            # IMPORTANTE: Usar A:T para 20 columnas exactas
+            # IMPORTANTE: Usar A:T para 21 columnas exactas
             result = self.sheets_service.spreadsheets().values().append(
                 spreadsheetId=spreadsheet_id,
-                range='Datos!A:T',  # Específicamente columnas A hasta T
+                range='Datos!A:U',  # Específicamente columnas A hasta U 21 columnas
                 valueInputOption='USER_ENTERED',  # Permite formato automático
                 insertDataOption='INSERT_ROWS',
                 body=body
@@ -1014,6 +1032,7 @@ class GoogleDriveClient:
         try:
             # PASO 1: Primero agregar los headers sin formato
             headers = [
+                'ID Email',
                 'Fecha Procesamiento',
                 'Fecha Email', 
                 'Remitente',
@@ -1041,7 +1060,7 @@ class GoogleDriveClient:
             
             self.sheets_service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
-                range='Datos!A1:T1',
+                range='Datos!A1:U1',
                 valueInputOption='RAW',
                 body=body
             ).execute()
@@ -1206,6 +1225,149 @@ class GoogleDriveClient:
     
     
     
+    #def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
+    #    """Actualiza la hoja de cálculo con los datos de la factura"""
+    #    try:
+    #        # Buscar o crear hoja de cálculo
+    #        # NOMBRE DEL ARCHIVO DE HOJA DE CALCULO
+    #        # spreadsheet_name = f"DOCUFIND_Facturas_{datetime.now().year}"
+    #        
+    #        # NOMBRE DESDE EL CONFIG.JSON
+    #        drive_config = self.config.get('google_drive', {})
+    #        # Opción 1: Nombre fijo desde config
+    #        spreadsheet_name = drive_config.get('spreadsheet_name')
+    #        
+    #        # Opción 2: Nombre con patrón
+    #        if not spreadsheet_name and drive_config.get('spreadsheet_name_pattern'):
+    #            pattern = drive_config['spreadsheet_name_pattern']
+    #            spreadsheet_name = pattern.format(
+    #                prefix='DOCUFIND',
+    #                year=datetime.now().year,
+    #                month=datetime.now().strftime('%m'),
+    #                month_name=datetime.now().strftime('%B'),
+    #                date=datetime.now().strftime('%Y%m%d')
+    #            )
+    #        
+    #        # Opción 3: Prefijo + año (comportamiento anterior)
+    #        if not spreadsheet_name:
+    #            prefix = drive_config.get('spreadsheet_prefix', 'DOCUFIND_Facturas')
+    #            spreadsheet_name = f"{prefix}_{datetime.now().year}"
+    #        
+    #        self.logger.info(f"📊 Usando hoja de cálculo: {spreadsheet_name}")
+    #        
+    #        
+    #        # Primero crear carpeta DOCUFIND si no existe
+    #        root_folder_id = self.drive_client.create_folder("DOCUFIND")
+    #        if not root_folder_id:
+    #            self.logger.error("❌ No se pudo crear carpeta DOCUFIND")
+    #            return
+    #        
+    #        # Crear o obtener spreadsheet con el nombre configurado
+    #        spreadsheet_id = self.drive_client.get_or_create_spreadsheet(
+    #            spreadsheet_name,
+    #            root_folder_id
+    #        )
+    #        
+    #        if not spreadsheet_id:
+    #            self.logger.error("❌ No se pudo crear/obtener hoja de cálculo")
+    #            return
+    #        
+    #        # Obtener información del email si está disponible
+    #        email_info = getattr(self, 'current_email', {})
+    #        attachments_info = getattr(self, 'current_attachments', [])
+    #        
+    #        # Preparar lista de nombres de adjuntos
+    #        attachment_names = []
+    #        if attachments_info:
+    #            for att in attachments_info:
+    #                if isinstance(att, dict):
+    #                    attachment_names.append(att.get('filename', ''))
+    #                else:
+    #                    attachment_names.append(str(att))
+    #        
+    #        # IMPORTANTE: Preparar exactamente 20 campos en orden
+    #        row_data = [
+    #            # 1. Fecha Procesamiento
+    #            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    #            
+    #            # 2. Fecha Email
+    #            email_info.get('date', '').split(' ')[0] if email_info.get('date') else '',
+    #            
+    #            # 3. Remitente
+    #            email_info.get('sender', ''),
+    #            
+    #            # 4. Asunto
+    #            email_info.get('subject', ''),
+    #            
+    #            # 5. Tiene Adjuntos
+    #            'Sí' if attachments_info else 'No',
+    #            
+    #            # 6. Cantidad Adjuntos
+    #            str(len(attachments_info)) if attachments_info else '0',
+    #            
+    #            # 7. Nombres Adjuntos
+    #            ', '.join(attachment_names)[:500] if attachment_names else '',
+    #            
+    #            # 8. Fecha Factura
+    #            invoice_data.get('invoice_date', invoice_data.get('date', '')),
+    #            
+    #            # 9. Proveedor
+    #            str(invoice_data.get('vendor', ''))[:100],
+    #            
+    #            # 10. Número Factura
+    #            str(invoice_data.get('invoice_number', ''))[:50],
+    #            
+    #            # 11. Concepto
+    #            str(invoice_data.get('concept', ''))[:200],
+    #            
+    #            # 12. Subtotal
+    #            str(invoice_data.get('subtotal', '')),
+    #            
+    #            # 13. Impuestos
+    #            str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
+    #            
+    #            # 14. Total
+    #            str(invoice_data.get('amount', invoice_data.get('total', ''))),
+    #            
+    #            # 15. Moneda
+    #            invoice_data.get('currency', 'MXN'),
+    #            
+    #            # 16. Método Pago
+    #            invoice_data.get('payment_method', ''),
+    #            
+    #            # 17. Categoría
+    #            invoice_data.get('category', 'Sin categoría'),
+    #            
+    #            # 18. Estado
+    #            'Procesado',
+    #            
+    #            # 19. Confianza
+    #            f"{invoice_data.get('confidence', 0):.1%}" if invoice_data.get('confidence') else 'N/A',
+    #            
+    #            # 20. Link Archivo
+    #            f"https://drive.google.com/file/d/{file_id}/view" if file_id else ''
+    #        ]
+    #        
+    #        # Verificar que tenemos exactamente 20 campos
+    #        if len(row_data) != 20:
+    #            self.logger.warning(f"⚠️ Número de campos incorrecto: {len(row_data)}, esperado: 20")
+    #            # Ajustar a 20 campos
+    #            while len(row_data) < 20:
+    #                row_data.append('')
+    #            row_data = row_data[:20]
+    #        
+    #        # Agregar fila a la hoja
+    #        if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
+    #            self.logger.info(f"        ✅ Datos agregados a hoja de cálculo")
+    #        else:
+    #            self.logger.error(f"        ❌ Error agregando datos a hoja")
+    #            
+    #    except Exception as e:
+    #        self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
+    #        import traceback
+    #        traceback.print_exc()
+    
+    
     def _update_spreadsheet(self, invoice_data: Dict, file_id: str):
         """Actualiza la hoja de cálculo con los datos de la factura"""
         try:
@@ -1232,6 +1394,9 @@ class GoogleDriveClient:
             email_info = getattr(self, 'current_email', {})
             attachments_info = getattr(self, 'current_attachments', [])
             
+            # IMPORTANTE: Obtener ID del email
+            email_id = email_info.get('id', 'NO_ID')
+            
             # Preparar lista de nombres de adjuntos
             attachment_names = []
             if attachments_info:
@@ -1243,74 +1408,77 @@ class GoogleDriveClient:
             
             # IMPORTANTE: Preparar exactamente 20 campos en orden
             row_data = [
-                # 1. Fecha Procesamiento
+                # 1. ID del Email (NUEVO)
+                str(email_id),
+                            
+                # 2. Fecha Procesamiento
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 
-                # 2. Fecha Email
+                # 3. Fecha Email
                 email_info.get('date', '').split(' ')[0] if email_info.get('date') else '',
                 
-                # 3. Remitente
+                # 4. Remitente
                 email_info.get('sender', ''),
                 
-                # 4. Asunto
+                # 5. Asunto
                 email_info.get('subject', ''),
                 
-                # 5. Tiene Adjuntos
+                # 6. Tiene Adjuntos
                 'Sí' if attachments_info else 'No',
                 
-                # 6. Cantidad Adjuntos
+                # 7. Cantidad Adjuntos
                 str(len(attachments_info)) if attachments_info else '0',
                 
-                # 7. Nombres Adjuntos
+                # 8. Nombres Adjuntos
                 ', '.join(attachment_names)[:500] if attachment_names else '',
                 
-                # 8. Fecha Factura
+                # 9. Fecha Factura
                 invoice_data.get('invoice_date', invoice_data.get('date', '')),
                 
-                # 9. Proveedor
+                # 10. Proveedor
                 str(invoice_data.get('vendor', ''))[:100],
                 
-                # 10. Número Factura
+                # 11. Número Factura
                 str(invoice_data.get('invoice_number', ''))[:50],
                 
-                # 11. Concepto
+                # 12. Concepto
                 str(invoice_data.get('concept', ''))[:200],
                 
-                # 12. Subtotal
+                # 13. Subtotal
                 str(invoice_data.get('subtotal', '')),
                 
-                # 13. Impuestos
+                # 14. Impuestos
                 str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
                 
-                # 14. Total
+                # 15. Total
                 str(invoice_data.get('amount', invoice_data.get('total', ''))),
                 
-                # 15. Moneda
+                # 16. Moneda
                 invoice_data.get('currency', 'MXN'),
                 
-                # 16. Método Pago
+                # 17. Método Pago
                 invoice_data.get('payment_method', ''),
                 
-                # 17. Categoría
+                # 18. Categoría
                 invoice_data.get('category', 'Sin categoría'),
                 
-                # 18. Estado
+                # 19. Estado
                 'Procesado',
                 
-                # 19. Confianza
+                # 20. Confianza
                 f"{invoice_data.get('confidence', 0):.1%}" if invoice_data.get('confidence') else 'N/A',
                 
-                # 20. Link Archivo
+                # 21. Link Archivo
                 f"https://drive.google.com/file/d/{file_id}/view" if file_id else ''
             ]
             
-            # Verificar que tenemos exactamente 20 campos
-            if len(row_data) != 20:
-                self.logger.warning(f"⚠️ Número de campos incorrecto: {len(row_data)}, esperado: 20")
-                # Ajustar a 20 campos
-                while len(row_data) < 20:
+            # Verificar que tenemos exactamente 21 campos
+            if len(row_data) != 21:
+                self.logger.warning(f"⚠️ Número de campos incorrecto: {len(row_data)}, esperado: 21")
+                # Ajustar a 21 campos
+                while len(row_data) < 21:
                     row_data.append('')
-                row_data = row_data[:20]
+                row_data = row_data[:21]
             
             # Agregar fila a la hoja
             if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
@@ -1322,6 +1490,7 @@ class GoogleDriveClient:
             self.logger.error(f"        ⚠️ Error actualizando hoja de cálculo: {e}")
             import traceback
             traceback.print_exc()
+        
         
             
     #def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
