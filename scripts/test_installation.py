@@ -12,7 +12,7 @@
 #   for intelligent document processing and cloud integration.
 # ===========================================================
 
-﻿# test_installation.py - Verificar instalación
+# test_installation.py - Verificar instalación
 import sys
 import importlib
 import os

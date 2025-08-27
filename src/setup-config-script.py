@@ -13,10 +13,6 @@
 #   for intelligent document processing and cloud integration.
 # ===========================================================
 
-"""
-Script de configuración inicial para DOCUFIND
-Ayuda a configurar las credenciales de forma segura
-"""
 
 import json
 import os

@@ -186,43 +186,7 @@ class InvoiceExtractor:
             'miscellaneous': ['otros', 'other', 'misc', 'general']
         }
     
-    #def extract(self, content: Any) -> Optional[Dict[str, Any]]:
-    #    """
-    #    Extrae datos de factura del contenido
-    #    
-    #    Args:
-    #        content: Contenido a procesar (texto, bytes, o dict)
-    #        
-    #    Returns:
-    #        Diccionario con datos extraídos o None
-    #    """
-    #    try:
-    #        # Convertir contenido a texto si es necesario
-    #        text = self._content_to_text(content)
-    #        
-    #        if not text:
-    #            logger.warning("⚠️ No se pudo obtener texto del contenido")
-    #            return None
-    #        
-    #        # Extraer datos usando patrones
-    #        extracted_data = self._extract_with_patterns(text)
-    #        
-    #        # Mejorar datos con análisis contextual
-    #        enhanced_data = self._enhance_with_context(extracted_data, text)
-    #        
-    #        # Calcular confianza
-    #        enhanced_data['confidence'] = self._calculate_confidence(enhanced_data)
-    #        
-    #        # Categorizar
-    #        enhanced_data['category'] = self._categorize_invoice(enhanced_data, text)
-    #        
-    #        logger.info(f"✅ Datos extraídos con {enhanced_data['confidence']:.0%} de confianza")
-    #        
-    #        return enhanced_data
-    #        
-    #    except Exception as e:
-    #        logger.error(f"❌ Error extrayendo datos: {e}")
-    #        return None
+    
     
     def extract(self, content: Any) -> Optional[Dict[str, Any]]:
         """

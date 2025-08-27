@@ -12,7 +12,7 @@
 #   for intelligent document processing and cloud integration.
 # ===========================================================
 
-﻿# test_google_auth.py - Probar autenticación con Google
+# test_google_auth.py - Probar autenticación con Google
 import os
 import json
 from pathlib import Path

@@ -12,7 +12,7 @@
 #   for intelligent document processing and cloud integration.
 # ===========================================================
 
-﻿# test_email_connection.py - Probar conexión de email
+# test_email_connection.py - Probar conexión de email
 import imaplib
 import ssl
 import os
