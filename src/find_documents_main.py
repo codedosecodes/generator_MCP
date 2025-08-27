@@ -449,7 +449,9 @@ class DocuFindProcessor:
 #            raise
  
     def _organize_in_drive(self, email: Dict, attachment: Dict, invoice_data: Dict):
-        """Organiza una factura en Google Drive"""
+        """
+        Organiza una factura en Google Drive con estructura Año/Mes/Día
+        """
         try:
             # Corregir el parseo de fecha - manejar fecha con hora
             date_str = email.get('date', '')
@@ -517,13 +519,20 @@ class DocuFindProcessor:
                 self.logger.info(f"      ✅ Subido a Drive: {new_filename}")
                 self.stats['archivos_subidos'] += 1
                 
-                # Actualizar hoja de cálculo con ID del email
-                self._update_spreadsheet_with_id(email, invoice_data, file_id)
+                # CORRECCIÓN: Usar _update_spreadsheet (no _update_spreadsheet_with_id)
+                # Guardar el email actual en contexto antes de actualizar
+                self.current_email = email
+                self.current_attachments = [attachment]
+                
+                # Llamar al método correcto
+                self._update_spreadsheet(invoice_data, file_id)
             else:
                 self.logger.error(f"      ❌ Error subiendo archivo")
                 
         except Exception as e:
             self.logger.error(f"      ❌ Error organizando en Drive: {e}")
+            import traceback
+            traceback.print_exc()
             raise
             
         #    # Crear estructura de carpetas basada en fecha
@@ -713,8 +722,23 @@ class DocuFindProcessor:
         """Actualiza la hoja de cálculo con los datos de la factura"""
         try:
             # Buscar o crear hoja de cálculo
-            spreadsheet_name = f"DOCUFIND_Facturas_{datetime.now().year}"
+            drive_config = self.config.get('google_drive', {})
+            google_services = self.config.get('google_services', {})
             
+            # Obtener nombre del spreadsheet desde config
+            spreadsheet_name = (
+                drive_config.get('spreadsheet_name') or 
+                google_services.get('spreadsheet_name')
+            )
+            
+            # Si no hay nombre configurado, usar defecto
+            if not spreadsheet_name:
+                prefix = google_services.get('spreadsheet_prefix', 'DOCUFIND_Facturas')
+                spreadsheet_name = f"{prefix}_{datetime.now().year}"
+            
+            self.logger.info(f"        📊 Usando hoja: {spreadsheet_name}")
+            
+
             # Primero crear carpeta DOCUFIND si no existe
             root_folder_id = self.drive_client.create_folder("DOCUFIND")
             if not root_folder_id:
@@ -746,12 +770,27 @@ class DocuFindProcessor:
                         attachment_names.append(att.get('filename', ''))
                     else:
                         attachment_names.append(str(att))
+                        
+            # Limpiar datos de factura de caracteres extraños
+            def clean_value(value):
+                if value is None:
+                    return ''
+                if isinstance(value, str):
+                    # Eliminar caracteres no imprimibles
+                    value = ''.join(c for c in value if c.isprintable() or c == ' ')
+                    # Limpiar espacios múltiples
+                    value = ' '.join(value.split())
+                    # Limitar longitud
+                    if len(value) > 200:
+                        value = value[:197] + '...'
+                    return value
+                return str(value)
             
-            # IMPORTANTE: Preparar exactamente 20 campos en orden
+            # IMPORTANTE: Preparar exactamente 21 campos en orden
             row_data = [
-                # 1. ID del Email (NUEVO)
+                # 1. ID del Email
                 str(email_id),
-                            
+                
                 # 2. Fecha Procesamiento
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 
@@ -759,10 +798,10 @@ class DocuFindProcessor:
                 email_info.get('date', '').split(' ')[0] if email_info.get('date') else '',
                 
                 # 4. Remitente
-                email_info.get('sender', ''),
+                clean_value(email_info.get('sender', '')),
                 
                 # 5. Asunto
-                email_info.get('subject', ''),
+                clean_value(email_info.get('subject', '')),
                 
                 # 6. Tiene Adjuntos
                 'Sí' if attachments_info else 'No',
@@ -771,37 +810,37 @@ class DocuFindProcessor:
                 str(len(attachments_info)) if attachments_info else '0',
                 
                 # 8. Nombres Adjuntos
-                ', '.join(attachment_names)[:500] if attachment_names else '',
+                clean_value(', '.join(attachment_names)[:500]) if attachment_names else '',
                 
                 # 9. Fecha Factura
-                invoice_data.get('invoice_date', invoice_data.get('date', '')),
+                clean_value(invoice_data.get('invoice_date', invoice_data.get('date', ''))),
                 
                 # 10. Proveedor
-                str(invoice_data.get('vendor', ''))[:100],
+                clean_value(invoice_data.get('vendor', 'No identificado')),
                 
                 # 11. Número Factura
-                str(invoice_data.get('invoice_number', ''))[:50],
+                clean_value(invoice_data.get('invoice_number', f"DOC-{datetime.now().strftime('%Y%m%d%H%M%S')}")),
                 
                 # 12. Concepto
-                str(invoice_data.get('concept', ''))[:200],
+                clean_value(invoice_data.get('concept', 'Documento adjunto')),
                 
                 # 13. Subtotal
-                str(invoice_data.get('subtotal', '')),
+                clean_value(invoice_data.get('subtotal', '')),
                 
                 # 14. Impuestos
-                str(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
+                clean_value(invoice_data.get('tax_amount', invoice_data.get('tax', ''))),
                 
                 # 15. Total
-                str(invoice_data.get('amount', invoice_data.get('total', ''))),
+                clean_value(invoice_data.get('amount', invoice_data.get('total', ''))),
                 
                 # 16. Moneda
-                invoice_data.get('currency', 'MXN'),
+                clean_value(invoice_data.get('currency', 'MXN')),
                 
                 # 17. Método Pago
-                invoice_data.get('payment_method', ''),
+                clean_value(invoice_data.get('payment_method', '')),
                 
                 # 18. Categoría
-                invoice_data.get('category', 'Sin categoría'),
+                clean_value(invoice_data.get('category', 'Sin categoría')),
                 
                 # 19. Estado
                 'Procesado',
