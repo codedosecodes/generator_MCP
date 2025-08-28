@@ -306,33 +306,315 @@ class DocuFindProcessor:
             self.logger.error(f"  ❌ Error procesando correo: {e}")
             self.stats['errores'] += 1     
             
+    #def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
+    #    """Procesa un adjunto individual"""
+    #    try:
+    #        filename = attachment.get('filename', 'archivo_sin_nombre')
+    #        self.logger.info(f"    📄 Procesando: {filename}")
+    #        
+    #        # Recopilar info de adjuntos
+    #        attachments_info = {
+    #            'has_attachments': True,
+    #            'count': 1,
+    #            'names': [filename]
+    #        }
+    #        
+    #        if self._is_invoice(filename):
+    #            invoice_data = self.invoice_extractor.extract(attachment['content'])
+    #            
+    #            if invoice_data:
+    #                # Agregar info del email a los datos
+    #                invoice_data['email_date'] = email.get('date', '')
+    #                invoice_data['email_sender'] = email.get('sender', '')
+    #                invoice_data['email_subject'] = email.get('subject', '')
+    #                
+    #                self._organize_in_drive(email, attachment, invoice_data)
+    #    except Exception as e:
+    #        self.logger.error(f"    ❌ Error procesando adjunto: {e}")
+    #        self.stats['errores'] += 1
+    #   
+    
+    
     def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
-        """Procesa un adjunto individual"""
+        """Procesa un adjunto individual con contexto mejorado"""
         try:
             filename = attachment.get('filename', 'archivo_sin_nombre')
             self.logger.info(f"    📄 Procesando: {filename}")
             
-            # Recopilar info de adjuntos
-            attachments_info = {
-                'has_attachments': True,
-                'count': 1,
-                'names': [filename]
-            }
-            
+            # Verificar si es una factura
             if self._is_invoice(filename):
-                invoice_data = self.invoice_extractor.extract(attachment['content'])
+                # NUEVO: Pasar contexto del email al extractor
+                # Preparar contexto enriquecido
+                email_context = {
+                    'sender': email.get('sender', ''),
+                    'subject': email.get('subject', ''),
+                    'date': email.get('date', ''),
+                    'body': email.get('body', ''),  # Cuerpo del mensaje
+                    'filename': filename
+                }
+                
+                # Extraer datos de la factura CON CONTEXTO
+                invoice_data = self._extract_invoice_with_context(
+                    attachment['content'], 
+                    email_context
+                )
                 
                 if invoice_data:
-                    # Agregar info del email a los datos
-                    invoice_data['email_date'] = email.get('date', '')
-                    invoice_data['email_sender'] = email.get('sender', '')
-                    invoice_data['email_subject'] = email.get('subject', '')
+                    self.logger.info(f"      ✅ Datos extraídos: {invoice_data.get('invoice_number', 'N/A')}")
+                    self.stats['facturas_extraidas'] += 1
                     
+                    # Organizar en Google Drive
                     self._organize_in_drive(email, attachment, invoice_data)
+                else:
+                    self.logger.warning(f"      ⚠️ No se pudieron extraer datos")
+                    # Aún así procesar con datos mínimos
+                    minimal_data = self._create_minimal_invoice_data(email, attachment)
+                    self._organize_in_drive(email, attachment, minimal_data)
+            else:
+                # Subir archivo tal cual
+                self._upload_to_drive(email, attachment)
+                
         except Exception as e:
             self.logger.error(f"    ❌ Error procesando adjunto: {e}")
-            self.stats['errores'] += 1
+            self.stats['errores'] += 1         
+    
+    
+    def _extract_invoice_with_context(self, content: bytes, email_context: Dict) -> Dict[str, Any]:
+        """
+        Extrae datos de factura usando el contexto del email
+        
+        Args:
+            content: Contenido del archivo adjunto
+            email_context: Información del email (sender, subject, date, body)
+        
+        Returns:
+            Diccionario con datos extraídos y mejorados
+        """
+        # Primero intentar extracción normal
+        invoice_data = self.invoice_extractor.extract(content)
+        
+        if not invoice_data:
+            invoice_data = {}
+        
+        # MEJORA 1: CONCEPTO - Usar el cuerpo del email
+        if not invoice_data.get('concept') or invoice_data.get('concept') == 'Documento adjunto':
+            # Obtener el cuerpo del email
+            email_body = email_context.get('body', '')
+            
+            if email_body:
+                # Limpiar el cuerpo del email
+                clean_body = self._clean_email_body(email_body)
                 
+                # Tomar los primeros 500 caracteres del cuerpo limpio
+                if len(clean_body) > 500:
+                    invoice_data['concept'] = clean_body[:497] + '...'
+                else:
+                    invoice_data['concept'] = clean_body if clean_body else f"Adjunto: {email_context.get('filename', 'documento')}"
+            else:
+                # Si no hay cuerpo, usar el asunto
+                subject = email_context.get('subject', '')
+                invoice_data['concept'] = subject[:500] if subject else f"Adjunto: {email_context.get('filename', 'documento')}"
+        
+        # MEJORA 2: FECHA FACTURA - Usar fecha del email
+        if not invoice_data.get('invoice_date') or self._has_special_chars(invoice_data.get('invoice_date', '')):
+            # Usar la fecha del email
+            email_date = email_context.get('date', '')
+            if email_date:
+                # Tomar solo la parte de la fecha (sin hora)
+                if ' ' in email_date:
+                    email_date = email_date.split(' ')[0]
+                invoice_data['invoice_date'] = email_date
+            else:
+                invoice_data['invoice_date'] = datetime.now().strftime('%Y-%m-%d')
+        
+        # MEJORA 3: PROVEEDOR - Usar dominio del remitente + resumen
+        if not invoice_data.get('vendor') or invoice_data.get('vendor') == 'No identificado':
+            sender = email_context.get('sender', '')
+            
+            if sender:
+                # Extraer dominio del email
+                domain = self._extract_domain_from_sender(sender)
+                
+                # Intentar obtener nombre del remitente
+                sender_name = self._extract_sender_name(sender)
+                
+                # Crear resumen del proveedor
+                if domain:
+                    # Formato: "dominio.com - Nombre o Asunto"
+                    if sender_name and sender_name != domain:
+                        invoice_data['vendor'] = f"{domain} - {sender_name}"
+                    else:
+                        # Usar parte del asunto si no hay nombre
+                        subject = email_context.get('subject', '')
+                        if subject:
+                            # Tomar las primeras palabras del asunto
+                            subject_summary = ' '.join(subject.split()[:5])
+                            invoice_data['vendor'] = f"{domain} - {subject_summary}"
+                        else:
+                            invoice_data['vendor'] = domain
+                else:
+                    invoice_data['vendor'] = sender[:100] if sender else 'Remitente desconocido'
+        
+        # Limpiar todos los valores de caracteres especiales
+        for key, value in invoice_data.items():
+            if isinstance(value, str):
+                invoice_data[key] = self._clean_special_chars(value)
+        
+        return invoice_data
+    
+    
+        
+    def _clean_email_body(self, body: str) -> str:
+        """
+        Limpia el cuerpo del email de HTML, caracteres especiales y formato
+        """
+        if not body:
+            return ""
+        
+        # Eliminar tags HTML
+        import re
+        clean = re.sub(r'<[^>]+>', '', body)
+        
+        # Eliminar URLs
+        clean = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', clean)
+        
+        # Eliminar caracteres XML/RDF
+        clean = re.sub(r'xmlns:[^=]+=\\"[^\\"]+\\"', '', clean)
+        clean = re.sub(r'rdf:[^=]+=\\"[^\\"]+\\"', '', clean)
+        clean = re.sub(r'</?rdf:[^>]+>', '', clean)
+        clean = re.sub(r'</?pdf:[^>]+>', '', clean)
+        
+        # Eliminar caracteres no imprimibles
+        clean = ''.join(char for char in clean if char.isprintable() or char in '\\n\\r\\t ')
+        
+        # Normalizar espacios en blanco
+        clean = re.sub(r'\\s+', ' ', clean)
+        
+        # Eliminar líneas vacías múltiples
+        clean = re.sub(r'\\n\\s*\\n', '\\n', clean)
+        
+        # Limitar longitud y limpiar
+        clean = clean.strip()
+        
+        return clean
+
+    def _has_special_chars(self, text: str) -> bool:
+        """
+        Verifica si el texto tiene caracteres especiales problemáticos
+        """
+        if not text:
+            return False
+        
+        # Buscar patrones problemáticos
+        problematic_patterns = [
+            'rdf:', 'xmlns:', 'pdf:', 'http://', '<', '>', '<?xml'
+        ]
+        
+        text_lower = text.lower()
+        return any(pattern in text_lower for pattern in problematic_patterns)
+
+    def _extract_domain_from_sender(self, sender: str) -> str:
+        """
+        Extrae el dominio del email del remitente
+        """
+        import re
+        
+        # Buscar email en el sender
+        email_pattern = r'[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})'
+        match = re.search(email_pattern, sender)
+        
+        if match:
+            domain = match.group(1)
+            # Limpiar el dominio
+            domain = domain.lower()
+            # Remover subdominios comunes
+            for prefix in ['mail.', 'email.', 'smtp.', 'imap.', 'pop.', 'no-reply.', 'noreply.']:
+                if domain.startswith(prefix):
+                    domain = domain[len(prefix):]
+            return domain
+        
+        return ""
+
+    def _extract_sender_name(self, sender: str) -> str:
+        """
+        Extrae el nombre del remitente
+        """
+        import re
+        
+        # Formato: "Nombre" <email@domain.com>
+        match = re.match(r'^"?([^"<]+)"?\\s*<?[^>]*>?', sender)
+        if match:
+            name = match.group(1).strip()
+            # Limpiar el nombre
+            name = name.replace('"', '').strip()
+            if name and not '@' in name:
+                return name[:50]  # Limitar longitud
+        
+        # Si no hay nombre, intentar obtener la parte antes del @
+        if '@' in sender:
+            local_part = sender.split('@')[0]
+            # Limpiar y capitalizar
+            local_part = local_part.replace('.', ' ').replace('_', ' ').replace('-', ' ')
+            local_part = ' '.join(word.capitalize() for word in local_part.split())
+            return local_part[:50]
+        
+        return ""
+
+    def _clean_special_chars(self, text: str) -> str:
+        """
+        Limpia caracteres especiales del texto
+        """
+        if not text:
+            return ""
+        
+        # Lista de reemplazos
+        replacements = {
+            'rdf:about=""': '',
+            'xmlns:': '',
+            'pdf:': '',
+            'http://': '',
+            '<?xml': '',
+            '/>': '',
+            '<': '',
+            '>': ''
+        }
+        
+        clean = text
+        for old, new in replacements.items():
+            clean = clean.replace(old, new)
+        
+        # Eliminar múltiples espacios
+        clean = ' '.join(clean.split())
+        
+        # Limitar longitud
+        if len(clean) > 500:
+            clean = clean[:497] + '...'
+        
+        return clean.strip()
+
+    def _create_minimal_invoice_data(self, email: Dict, attachment: Dict) -> Dict[str, Any]:
+        """
+        Crea datos mínimos de factura cuando no se puede extraer nada
+        """
+        sender = email.get('sender', '')
+        domain = self._extract_domain_from_sender(sender) if sender else 'desconocido'
+        
+        # Usar el cuerpo del email para el concepto
+        body = email.get('body', '')
+        clean_body = self._clean_email_body(body) if body else email.get('subject', 'Documento adjunto')
+        
+        return {
+            'invoice_number': f"DOC-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'vendor': domain,
+            'concept': clean_body[:500],
+            'invoice_date': email.get('date', '').split(' ')[0] if email.get('date') else datetime.now().strftime('%Y-%m-%d'),
+            'amount': '',
+            'currency': 'MXN',
+            'confidence': 0.1,
+            'category': 'documento'
+        }
+    
+    
     
     
     def _is_invoice(self, filename: str) -> bool:

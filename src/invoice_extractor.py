@@ -258,24 +258,75 @@ class InvoiceExtractor:
                 'confidence': 0.0
             }
     
+    #def _content_to_text(self, content: Any) -> str:
+    #    """Convierte diferentes tipos de contenido a texto"""
+    #    if isinstance(content, str):
+    #        return content
+    #    elif isinstance(content, bytes):
+    #        try:
+    #            return content.decode('utf-8', errors='ignore')
+    #        except:
+    #            return content.decode('latin-1', errors='ignore')
+    #    elif isinstance(content, dict):
+    #        # Si es un dict, buscar campos relevantes
+    #        text_parts = []
+    #        for key in ['text', 'body', 'content', 'subject', 'description']:
+    #            if key in content:
+    #                text_parts.append(str(content[key]))
+    #        return '\n'.join(text_parts)
+    #    else:
+    #        return str(content)
+    
+    
     def _content_to_text(self, content: Any) -> str:
-        """Convierte diferentes tipos de contenido a texto"""
+        """Convierte diferentes tipos de contenido a texto LIMPIO"""
+        
+        text = ""
+        
         if isinstance(content, str):
-            return content
+            text = content
         elif isinstance(content, bytes):
             try:
-                return content.decode('utf-8', errors='ignore')
+                text = content.decode('utf-8', errors='ignore')
             except:
-                return content.decode('latin-1', errors='ignore')
+                text = content.decode('latin-1', errors='ignore')
         elif isinstance(content, dict):
             # Si es un dict, buscar campos relevantes
             text_parts = []
             for key in ['text', 'body', 'content', 'subject', 'description']:
                 if key in content:
                     text_parts.append(str(content[key]))
-            return '\n'.join(text_parts)
+            text = '\\n'.join(text_parts)
         else:
-            return str(content)
+            text = str(content)
+        
+        # IMPORTANTE: Limpiar contenido XML/RDF/PDF metadata
+        import re
+        
+        # Eliminar bloques XML/RDF completos
+        text = re.sub(r'<\\?xml[^>]*\\?>[\\s\\S]*?</rdf:RDF>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'<rdf:RDF[\\s\\S]*?</rdf:RDF>', '', text, flags=re.IGNORECASE)
+        
+        # Eliminar tags XML/HTML
+        text = re.sub(r'<[^>]+>', ' ', text)
+        
+        # Eliminar namespaces y URIs
+        text = re.sub(r'xmlns:[^=]+=\\"[^\\"]+\\"', '', text)
+        text = re.sub(r'http[s]?://[^\\s]+', '', text)
+        
+        # Eliminar caracteres no imprimibles excepto espacios y saltos de línea
+        text = ''.join(char for char in text if char.isprintable() or char in '\\n\\r\\t ')
+        
+        # Normalizar espacios
+        text = re.sub(r'\\s+', ' ', text)
+        
+        # Si el texto resultante es muy corto o solo tiene basura, retornar vacío
+        if len(text.strip()) < 10:
+            return ""
+        
+        return text.strip()
+    
+    
     
     def _extract_with_patterns(self, text: str) -> Dict[str, Any]:
         """Extrae datos usando patrones regex"""
