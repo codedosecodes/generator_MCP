@@ -898,7 +898,7 @@ class GoogleDriveClient:
                 clean_value(invoice_data.get('payment_method', '')),
                 
                 # 18. Categoría
-                clean_value(invoice_data.get('category', 'Sin categoría')),
+                clean_value(invoice_data.get('category', 'Compras')),
                 
                 # 19. Estado
                 'Procesado',
