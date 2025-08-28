@@ -150,6 +150,7 @@ class DocuFindProcessor:
         self.logger.info("=" * 60)
         self.logger.info("📬 INICIANDO PROCESAMIENTO DE CORREOS")
         self.logger.info("=" * 60)
+        print('0-',date_from,'-',date_to)
         
         # CORRECCIÓN: Usar fechas del config si no se especifican
         if not date_from or not date_to:
@@ -174,8 +175,6 @@ class DocuFindProcessor:
                 except ValueError:
                     self.logger.warning(f"⚠️ Fecha inicial inválida en config: {config_start}")
                     date_from = datetime.now() - timedelta(days=60)
-            else:
-                self.logger.warning(f"⚠️ Fecha inicial inválida en config: {config_start}")
             
             if config_end and not date_to:
                 try:
@@ -184,13 +183,11 @@ class DocuFindProcessor:
                 except ValueError:
                     self.logger.warning(f"⚠️ Fecha final inválida en config: {config_end}")
                     date_to = datetime.now()
-            else:
-                 self.logger.warning(f"⚠️ Fecha final inválida en config: {config_end}")
         
         # Si aún no hay fechas, usar valores por defecto
         if not date_from:
             date_from = datetime.now() - timedelta(days=60)
-            self.logger.info("📅 Usando fecha por defecto: últimos 30 días")
+            self.logger.info("📅 Usando fecha por defecto: últimos 60 días")
         
         if not date_to:
             date_to = datetime.now()
@@ -831,16 +828,13 @@ Ejemplos de uso:
         
         # Crear y ejecutar procesador
         processor = DocuFindProcessor(args.config)
-        # fechas de procesamiento
+        print('Parametros: ',date_from,'-',date_to)
         results = processor.process_emails(
             date_from=date_from,
             date_to=date_to,
             query=args.query,
             limit=args.limit
         )
-        print("RESULTADOS")
-        print(results)
-        
         
         # Código de salida basado en errores
         if processor.stats['errores'] > 0:
