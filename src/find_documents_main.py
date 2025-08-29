@@ -93,14 +93,17 @@ class DocuFindProcessor:
         # Inicializar componentes
         self._initialize_components()
         
-        # Estadísticas de procesamiento
+        # 🔧 CORRECCIÓN: Agregar las estadísticas faltantes
         self.stats = {
+            'tiempo_inicio': datetime.now(),
+            'tiempo_fin': None,
             'emails_procesados': 0,
             'facturas_extraidas': 0,
             'archivos_subidos': 0,
             'errores': 0,
-            'tiempo_inicio': None,
-            'tiempo_fin': None
+            # 🔧 AGREGAR ESTAS LÍNEAS NUEVAS:
+            'emails_sin_adjuntos': 0,        # ← FALTABA ESTA
+            'emails_con_adjuntos': 0,        # ← FALTABA ESTA
         }
     
     def _initialize_components(self):
@@ -304,6 +307,9 @@ class DocuFindProcessor:
                 # Actualizar hoja de cálculo con datos del email sin adjuntos
                 self._update_spreadsheet_for_email_only(email, invoice_data, results)
                 
+                
+                if 'emails_sin_adjuntos' not in self.stats:
+                    self.stats['emails_sin_adjuntos'] = 0
                 self.stats['emails_sin_adjuntos'] += 1
                 return
             
@@ -311,7 +317,10 @@ class DocuFindProcessor:
             for attachment in attachments:
                 self._process_attachment(email, attachment, results)
                 
+            if 'emails_con_adjuntos' not in self.stats:
+                self.stats['emails_con_adjuntos'] = 0
             self.stats['emails_con_adjuntos'] += 1
+                
             
         except Exception as e:
             self.logger.error(f"    ❌ Error procesando email: {e}")
