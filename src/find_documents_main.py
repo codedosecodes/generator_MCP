@@ -306,34 +306,51 @@ class DocuFindProcessor:
             self.logger.error(f"  ❌ Error procesando correo: {e}")
             self.stats['errores'] += 1     
             
+   
+    
     #def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
-    #    """Procesa un adjunto individual"""
+    #    """Procesa un adjunto individual con contexto mejorado"""
     #    try:
     #        filename = attachment.get('filename', 'archivo_sin_nombre')
     #        self.logger.info(f"    📄 Procesando: {filename}")
     #        
-    #        # Recopilar info de adjuntos
-    #        attachments_info = {
-    #            'has_attachments': True,
-    #            'count': 1,
-    #            'names': [filename]
-    #        }
-    #        
+    #        # Verificar si es una factura
     #        if self._is_invoice(filename):
-    #            invoice_data = self.invoice_extractor.extract(attachment['content'])
+    #            # NUEVO: Pasar contexto del email al extractor
+    #            # Preparar contexto enriquecido
+    #            email_context = {
+    #                'sender': email.get('sender', ''),
+    #                'subject': email.get('subject', ''),
+    #                'date': email.get('date', ''),
+    #                'body': email.get('body', ''),  # Cuerpo del mensaje
+    #                'filename': filename
+    #            }
+    #            
+    #            # Extraer datos de la factura CON CONTEXTO
+    #            invoice_data = self._extract_invoice_with_context(
+    #                attachment['content'], 
+    #                email_context
+    #            )
     #            
     #            if invoice_data:
-    #                # Agregar info del email a los datos
-    #                invoice_data['email_date'] = email.get('date', '')
-    #                invoice_data['email_sender'] = email.get('sender', '')
-    #                invoice_data['email_subject'] = email.get('subject', '')
+    #                self.logger.info(f"      ✅ Datos extraídos: {invoice_data.get('invoice_number', 'N/A')}")
+    #                self.stats['facturas_extraidas'] += 1
     #                
+    #                # Organizar en Google Drive
     #                self._organize_in_drive(email, attachment, invoice_data)
+    #            else:
+    #                self.logger.warning(f"      ⚠️ No se pudieron extraer datos")
+    #                # Aún así procesar con datos mínimos
+    #                minimal_data = self._create_minimal_invoice_data(email, attachment)
+    #                self._organize_in_drive(email, attachment, minimal_data)
+    #        else:
+    #            # Subir archivo tal cual
+    #            self._upload_to_drive(email, attachment)
+    #            
     #    except Exception as e:
     #        self.logger.error(f"    ❌ Error procesando adjunto: {e}")
-    #        self.stats['errores'] += 1
-    #   
-    
+    #        self.stats['errores'] += 1         
+    #
     
     def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
         """Procesa un adjunto individual con contexto mejorado"""
@@ -343,17 +360,19 @@ class DocuFindProcessor:
             
             # Verificar si es una factura
             if self._is_invoice(filename):
-                # NUEVO: Pasar contexto del email al extractor
-                # Preparar contexto enriquecido
+                # 🔧 CORRECCIÓN 3: Obtener TODO el contenido del email
+                email_body = self._get_complete_email_content(email)
+                
+                # NUEVO: Pasar contexto completo del email al extractor
                 email_context = {
                     'sender': email.get('sender', ''),
                     'subject': email.get('subject', ''),
                     'date': email.get('date', ''),
-                    'body': email.get('body', ''),  # Cuerpo del mensaje
+                    'body': email_body,  # 🔧 CONTENIDO COMPLETO DEL EMAIL
                     'filename': filename
                 }
                 
-                # Extraer datos de la factura CON CONTEXTO
+                # Extraer datos de la factura CON CONTEXTO COMPLETO
                 invoice_data = self._extract_invoice_with_context(
                     attachment['content'], 
                     email_context
@@ -376,19 +395,96 @@ class DocuFindProcessor:
                 
         except Exception as e:
             self.logger.error(f"    ❌ Error procesando adjunto: {e}")
-            self.stats['errores'] += 1         
+            self.stats['errores'] += 1
     
+    #def _extract_invoice_with_context(self, content: bytes, email_context: Dict) -> Dict[str, Any]:
+    #    """
+    #    Extrae datos de factura usando el contexto del email
+    #    
+    #    Args:
+    #        content: Contenido del archivo adjunto
+    #        email_context: Información del email (sender, subject, date, body)
+    #    
+    #    Returns:
+    #        Diccionario con datos extraídos y mejorados
+    #    """
+    #    # Primero intentar extracción normal
+    #    invoice_data = self.invoice_extractor.extract(content)
+    #    
+    #    if not invoice_data:
+    #        invoice_data = {}
+    #    
+    #    # MEJORA 1: CONCEPTO - Usar el cuerpo del email
+    #    if not invoice_data.get('concept') or invoice_data.get('concept') == 'Documento adjunto':
+    #        # Obtener el cuerpo del email
+    #        email_body = email_context.get('body', '')
+    #        
+    #        if email_body:
+    #            # Limpiar el cuerpo del email
+    #            clean_body = self._clean_email_body(email_body)
+    #            
+    #            # Tomar los primeros 500 caracteres del cuerpo limpio
+    #            if len(clean_body) > 500:
+    #                invoice_data['concept'] = clean_body[:497] + '...'
+    #            else:
+    #                invoice_data['concept'] = clean_body if clean_body else f"Adjunto: {email_context.get('filename', 'documento')}"
+    #        else:
+    #            # Si no hay cuerpo, usar el asunto
+    #            subject = email_context.get('subject', '')
+    #            invoice_data['concept'] = subject[:500] if subject else f"Adjunto: {email_context.get('filename', 'documento')}"
+    #    
+    #    # MEJORA 2: FECHA FACTURA - Usar fecha del email
+    #    if not invoice_data.get('invoice_date') or self._has_special_chars(invoice_data.get('invoice_date', '')):
+    #        # Usar la fecha del email
+    #        email_date = email_context.get('date', '')
+    #        if email_date:
+    #            # Tomar solo la parte de la fecha (sin hora)
+    #            if ' ' in email_date:
+    #                email_date = email_date.split(' ')[0]
+    #            invoice_data['invoice_date'] = email_date
+    #        else:
+    #            invoice_data['invoice_date'] = datetime.now().strftime('%Y-%m-%d')
+    #    
+    #    # MEJORA 3: PROVEEDOR - Usar dominio del remitente + resumen
+    #    if not invoice_data.get('vendor') or invoice_data.get('vendor') == 'No identificado':
+    #        sender = email_context.get('sender', '')
+    #        
+    #        if sender:
+    #            # Extraer dominio del email
+    #            domain = self._extract_domain_from_sender(sender)
+    #            
+    #            # Intentar obtener nombre del remitente
+    #            sender_name = self._extract_sender_name(sender)
+    #            
+    #            # Crear resumen del proveedor
+    #            if domain:
+    #                # Formato: "dominio.com - Nombre o Asunto"
+    #                if sender_name and sender_name != domain:
+    #                    invoice_data['vendor'] = f"{domain} - {sender_name}"
+    #                else:
+    #                    # Usar parte del asunto si no hay nombre
+    #                    subject = email_context.get('subject', '')
+    #                    if subject:
+    #                        # Tomar las primeras palabras del asunto
+    #                        subject_summary = ' '.join(subject.split()[:5])
+    #                        invoice_data['vendor'] = f"{domain} - {subject_summary}"
+    #                    else:
+    #                        invoice_data['vendor'] = domain
+    #            else:
+    #                invoice_data['vendor'] = sender[:100] if sender else 'Remitente desconocido'
+    #    
+    #    # Limpiar todos los valores de caracteres especiales
+    #    for key, value in invoice_data.items():
+    #        if isinstance(value, str):
+    #            invoice_data[key] = self._clean_special_chars(value)
+    #    
+    #    return invoice_data
     
+        
     def _extract_invoice_with_context(self, content: bytes, email_context: Dict) -> Dict[str, Any]:
         """
         Extrae datos de factura usando el contexto del email
-        
-        Args:
-            content: Contenido del archivo adjunto
-            email_context: Información del email (sender, subject, date, body)
-        
-        Returns:
-            Diccionario con datos extraídos y mejorados
+        CORREGIDO: SIEMPRE usa la fecha del correo
         """
         # Primero intentar extracción normal
         invoice_data = self.invoice_extractor.extract(content)
@@ -415,19 +511,17 @@ class DocuFindProcessor:
                 subject = email_context.get('subject', '')
                 invoice_data['concept'] = subject[:500] if subject else f"Adjunto: {email_context.get('filename', 'documento')}"
         
-        # MEJORA 2: FECHA FACTURA - Usar fecha del email
-        if not invoice_data.get('invoice_date') or self._has_special_chars(invoice_data.get('invoice_date', '')):
-            # Usar la fecha del email
-            email_date = email_context.get('date', '')
-            if email_date:
-                # Tomar solo la parte de la fecha (sin hora)
-                if ' ' in email_date:
-                    email_date = email_date.split(' ')[0]
-                invoice_data['invoice_date'] = email_date
-            else:
-                invoice_data['invoice_date'] = datetime.now().strftime('%Y-%m-%d')
+        # 🔧 CORRECCIÓN 1: FECHA FACTURA - SIEMPRE usar fecha del email
+        email_date = email_context.get('date', '')
+        if email_date:
+            # Tomar solo la parte de la fecha (sin hora)
+            if ' ' in email_date:
+                email_date = email_date.split(' ')[0]
+            invoice_data['invoice_date'] = email_date
+        else:
+            invoice_data['invoice_date'] = datetime.now().strftime('%Y-%m-%d')
         
-        # MEJORA 3: PROVEEDOR - Usar dominio del remitente + resumen
+        # 🔧 CORRECCIÓN 2: PROVEEDOR - Usar dominio del remitente + resumen
         if not invoice_data.get('vendor') or invoice_data.get('vendor') == 'No identificado':
             sender = email_context.get('sender', '')
             
@@ -461,8 +555,6 @@ class DocuFindProcessor:
                 invoice_data[key] = self._clean_special_chars(value)
         
         return invoice_data
-    
-    
         
     def _clean_email_body(self, body: str) -> str:
         """
@@ -1041,6 +1133,63 @@ class DocuFindProcessor:
             self.logger.info("✅ ¡Procesamiento completado exitosamente!")
         else:
             self.logger.warning(f"⚠️ Procesamiento completado con {self.stats['errores']} errores")
+            
+            
+    def _get_complete_email_content(self, email: Dict) -> str:
+        """
+        🔧 NUEVO MÉTODO: Obtiene TODO el contenido disponible del email
+        """
+        content_parts = []
+        
+        try:
+            # 1. Contenido del cuerpo principal
+            if email.get('body'):
+                content_parts.append(str(email['body']))
+            
+            # 2. Contenido de texto plano
+            if email.get('text_content'):
+                content_parts.append(str(email['text_content']))
+            
+            # 3. Contenido HTML convertido a texto
+            if email.get('html_content'):
+                html_content = str(email['html_content'])
+                # Convertir HTML básico a texto
+                import re
+                # Eliminar scripts y styles
+                html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL)
+                html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL)
+                # Eliminar tags HTML
+                text_content = re.sub(r'<[^>]+>', ' ', html_content)
+                # Limpiar espacios extra
+                text_content = ' '.join(text_content.split())
+                if text_content:
+                    content_parts.append(text_content)
+            
+            # 4. Si no hay contenido, usar el asunto como contexto
+            if not content_parts:
+                subject = email.get('subject', '')
+                if subject:
+                    content_parts.append(f"Asunto del correo: {subject}")
+            
+            # Combinar todo el contenido
+            complete_content = '\n\n'.join(content_parts)
+            
+            # Limpiar el contenido final
+            if complete_content:
+                # Eliminar caracteres no imprimibles
+                clean_content = ''.join(char for char in complete_content if char.isprintable() or char.isspace())
+                # Normalizar espacios
+                clean_content = ' '.join(clean_content.split())
+                
+                self.logger.info(f"        📄 Contenido completo extraído: {len(clean_content)} caracteres")
+                return clean_content
+            
+            return ""
+            
+        except Exception as e:
+            self.logger.warning(f"        ⚠️ Error obteniendo contenido completo: {e}")
+            # Fallback: usar solo el asunto
+            return email.get('subject', '')
 
 def main():
     """Función principal"""

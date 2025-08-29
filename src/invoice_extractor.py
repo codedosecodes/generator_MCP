@@ -793,6 +793,76 @@ def extract_phone_numbers(text: str) -> List[str]:
     
     return list(set(phone_numbers))  # Eliminar duplicados
 
+
+
+# 🔧 AGREGAR ESTOS MÉTODOS NUEVOS AL FINAL DEL ARCHIVO:
+
+def _extract_domain_from_sender(self, sender: str) -> str:
+    """Extrae el dominio del email del remitente"""
+    import re
+    
+    # Buscar patrón email@dominio.com
+    match = re.search(r'[\w\.-]+@([\w\.-]+\.\w+)', sender)
+    if match:
+        return match.group(1)
+    return ''
+
+def _extract_sender_name(self, sender: str) -> str:
+    """Extrae el nombre del remitente si está en formato 'Nombre <email>'"""
+    import re
+    
+    # Formato: "Nombre <email@domain.com>"
+    match = re.match(r'^([^<]+)\s*<', sender.strip())
+    if match:
+        name = match.group(1).strip().strip('"\'')
+        return name
+    
+    # Si no hay nombre, usar la parte antes del @
+    email_match = re.search(r'([\w\.-]+)@', sender)
+    if email_match:
+        username = email_match.group(1)
+        # Convertir a formato más legible
+        return username.replace('.', ' ').replace('_', ' ').title()
+    
+    return ''
+
+def _clean_special_chars(self, text: str) -> str:
+    """Limpia caracteres especiales del texto"""
+    if not text:
+        return text
+    
+    # Eliminar caracteres no ASCII problemáticos
+    clean_text = text.encode('ascii', 'ignore').decode('ascii')
+    
+    # Normalizar espacios
+    clean_text = ' '.join(clean_text.split())
+    
+    return clean_text[:500]  # Limitar longitud
+
+# 🔧 CORRECCIÓN 3: MEJOR LIMPIEZA DEL CONTENIDO DEL EMAIL
+def _clean_email_body(self, body: str) -> str:
+    """
+    Limpia el cuerpo del email de HTML, caracteres especiales y formato
+    """
+    if not body:
+        return ""
+    
+    # Eliminar tags HTML
+    import re
+    clean = re.sub(r'<[^>]+>', '', body)
+    
+    # Eliminar URLs
+    clean = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', clean)
+    
+    # Eliminar caracteres de control
+    clean = ''.join(char for char in clean if char.isprintable() or char.isspace())
+    
+    # Normalizar espacios y saltos de línea
+    clean = re.sub(r'\s+', ' ', clean)
+    
+    return clean.strip()
+
+
 # Clase de prueba para desarrollo
 class InvoiceExtractorTester:
     """Clase para probar el extractor de facturas"""
