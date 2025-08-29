@@ -1,4 +1,4 @@
-﻿# DOCUFIND – Intelligent Email and Invoice Processor powered by Gabriel M. Cortés
+﻿# DOCUFIND – Intelligent Email and Invoice Processor powered by Gabriel M. Cortés 2024
 
 ## 🚀 Overview
 DOCUFIND is an extracurricular university project designed to **automate the classification and analysis of emails containing invoices and receipts**, seamlessly integrating with **Google Drive** and **Google Sheets** for secure storage and reporting.  
