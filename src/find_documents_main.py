@@ -265,9 +265,9 @@ class DocuFindProcessor:
         return params
     
     def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
-        """Procesa un correo individual"""
+        """Procesa un correo individual - CORREGIDO para emails sin adjuntos"""
         try:
-            self.logger.info(f"\\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
+            self.logger.info(f"\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
             self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
             self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
             
@@ -284,29 +284,162 @@ class DocuFindProcessor:
             
             if not attachments:
                 self.logger.info("  ⚠️ No se encontraron adjuntos")
-                # Aún así registrar el email sin adjuntos
-                self._update_spreadsheet({}, None)
+                
+                # 🔧 CORRECCIÓN 1: PROCESAR EMAILS SIN ADJUNTOS
+                # Crear datos de factura para emails sin adjuntos usando el contenido del email
+                email_body = self._get_complete_email_content(email)
+                
+                # Preparar contexto del email
+                email_context = {
+                    'sender': email.get('sender', ''),
+                    'subject': email.get('subject', ''),
+                    'date': email.get('date', ''),
+                    'body': email_body,
+                    'filename': 'email_content'  # No hay archivo físico
+                }
+                
+                # 🔧 APLICAR LAS CORRECCIONES TAMBIÉN A EMAILS SIN ADJUNTOS
+                invoice_data = self._create_invoice_data_for_email_only(email_context)
+                
+                # Actualizar hoja de cálculo con datos del email sin adjuntos
+                self._update_spreadsheet_for_email_only(email, invoice_data, results)
+                
+                self.stats['emails_sin_adjuntos'] += 1
                 return
             
-            self.logger.info(f"  📎 {len(attachments)} adjuntos encontrados")
-            
-            # Procesar cada adjunto
+            # Si tiene adjuntos, procesar normalmente
             for attachment in attachments:
                 self._process_attachment(email, attachment, results)
-            
-            results['success'].append({
-                'email_id': email['id'],
-                'subject': email.get('subject'),
-                'sender': email.get('sender'),
-                'date': email.get('date'),
-                'attachments_processed': len(attachments)
-            })
+                
+            self.stats['emails_con_adjuntos'] += 1
             
         except Exception as e:
-            self.logger.error(f"  ❌ Error procesando correo: {e}")
-            self.stats['errores'] += 1     
+            self.logger.error(f"    ❌ Error procesando email: {e}")
+            self.stats['errores'] += 1   
             
-   
+    def _create_invoice_data_for_email_only(self, email_context: Dict) -> Dict[str, Any]:
+        """
+        🔧 NUEVO MÉTODO: Crea datos de factura para emails SIN adjuntos
+        """
+        try:
+            # 🔧 CORRECCIÓN 1: FECHA FACTURA - SIEMPRE usar fecha del email
+            email_date = email_context.get('date', '')
+            if email_date:
+                # Tomar solo la parte de la fecha (sin hora)
+                if ' ' in email_date:
+                    email_date = email_date.split(' ')[0]
+                invoice_date = email_date
+            else:
+                invoice_date = datetime.now().strftime('%Y-%m-%d')
+            
+            # 🔧 CORRECCIÓN 2: CONCEPTO - Usar contenido del email o asunto
+            email_body = email_context.get('body', '')
+            subject = email_context.get('subject', '')
+            
+            if email_body and len(email_body.strip()) > 10:
+                # Limpiar el cuerpo del email
+                clean_body = self._clean_email_body(email_body)
+                if len(clean_body) > 500:
+                    concept = clean_body[:497] + '...'
+                else:
+                    concept = clean_body if clean_body else subject
+            else:
+                # Si no hay cuerpo, usar el asunto
+                concept = subject[:500] if subject else 'Email sin contenido'
+            
+            # 🔧 CORRECCIÓN 3: PROVEEDOR - Limpiar dominio correctamente
+            sender = email_context.get('sender', '')
+            vendor = self._extract_clean_vendor(sender, subject)
+            
+            # Crear datos de factura
+            invoice_data = {
+                'invoice_date': invoice_date,
+                'concept': concept,
+                'vendor': vendor,
+                'invoice_number': f"EMAIL-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                'amount': '',  # No hay monto en emails sin adjuntos normalmente
+                'currency': 'N/A',
+                'confidence': 0.7,  # Confianza media para emails sin adjuntos
+                'extraction_method': 'email_content_only'
+            }
+            
+            self.logger.info(f"      ✅ Datos creados para email sin adjuntos:")
+            self.logger.info(f"         - Fecha: {invoice_date}")
+            self.logger.info(f"         - Proveedor: {vendor}")
+            self.logger.info(f"         - Concepto: {concept[:50]}...")
+            
+            return invoice_data
+            
+        except Exception as e:
+            self.logger.error(f"      ❌ Error creando datos para email sin adjuntos: {e}")
+            return {
+                'invoice_date': datetime.now().strftime('%Y-%m-%d'),
+                'concept': 'Error procesando email',
+                'vendor': 'Error en extracción',
+                'invoice_number': f"ERR-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                'amount': '',
+                'currency': 'N/A',
+                'confidence': 0.0,
+                'extraction_method': 'error'
+            }
+
+    # 🔧 NUEVO MÉTODO: Para limpiar el proveedor correctamente
+    def _extract_clean_vendor(self, sender: str, subject: str = '') -> str:
+        """
+        🔧 SOLUCIÓN AL PROBLEMA DE CARACTERES ILEGIBLES
+        Extrae el proveedor limpiando correctamente la codificación
+        """
+        if not sender:
+            return 'Remitente desconocido'
+        
+        try:
+            # 🔧 PASO 1: Limpiar caracteres no ASCII problemáticos
+            # Eliminar caracteres de control y no imprimibles
+            clean_sender = ''.join(char for char in sender if char.isprintable())
+            
+            # 🔧 PASO 2: Extraer dominio del email de forma segura
+            import re
+            
+            # Buscar patrón email@dominio.com
+            email_match = re.search(r'[\w\.-]+@([\w\.-]+\.\w+)', clean_sender)
+            
+            if email_match:
+                domain = email_match.group(1)
+                
+                # 🔧 PASO 3: Extraer nombre del remitente si existe
+                # Formato: "Nombre <email@domain.com>"
+                name_match = re.match(r'^([^<]+)\s*<', clean_sender.strip())
+                
+                if name_match:
+                    # Limpiar el nombre extraído
+                    sender_name = name_match.group(1).strip().strip('"\'')
+                    
+                    # 🔧 PASO 4: Limpiar caracteres extraños del nombre
+                    sender_name = self._clean_special_chars(sender_name)
+                    
+                    if sender_name and len(sender_name) > 2 and sender_name != domain:
+                        return f"{domain} - {sender_name}"
+                
+                # Si no hay nombre limpio, usar dominio + parte del asunto
+                if subject:
+                    # Tomar las primeras 3 palabras del asunto
+                    subject_words = subject.split()[:3]
+                    clean_subject = ' '.join(subject_words)
+                    clean_subject = self._clean_special_chars(clean_subject)
+                    
+                    if clean_subject:
+                        return f"{domain} - {clean_subject}"
+                
+                # Solo el dominio
+                return domain
+            
+            # 🔧 FALLBACK: Si no se puede extraer dominio, usar remitente limpio
+            clean_sender = self._clean_special_chars(clean_sender)
+            return clean_sender[:100] if clean_sender else 'Remitente desconocido'
+            
+        except Exception as e:
+            self.logger.warning(f"      ⚠️ Error limpiando proveedor '{sender}': {e}")
+            return 'Error en proveedor'
     
     #def _process_attachment(self, email: Dict, attachment: Dict, results: Dict):
     #    """Procesa un adjunto individual con contexto mejorado"""
@@ -654,36 +787,143 @@ class DocuFindProcessor:
 
     def _clean_special_chars(self, text: str) -> str:
         """
-        Limpia caracteres especiales del texto
+        🔧 MÉTODO MEJORADO: Limpia caracteres especiales y ilegibles de forma agresiva
         """
         if not text:
-            return ""
+            return text
         
-        # Lista de reemplazos
-        replacements = {
-            'rdf:about=""': '',
-            'xmlns:': '',
-            'pdf:': '',
-            'http://': '',
-            '<?xml': '',
-            '/>': '',
-            '<': '',
-            '>': ''
-        }
-        
-        clean = text
-        for old, new in replacements.items():
-            clean = clean.replace(old, new)
-        
-        # Eliminar múltiples espacios
-        clean = ' '.join(clean.split())
-        
-        # Limitar longitud
-        if len(clean) > 500:
-            clean = clean[:497] + '...'
-        
-        return clean.strip()
+        try:
+            # 🔧 PASO 1: Eliminar caracteres no ASCII problemáticos
+            # Solo mantener caracteres alfanuméricos, espacios y puntuación básica
+            import re
+            
+            # Permitir solo caracteres seguros
+            clean_text = re.sub(r'[^\w\s\-.,@áéíóúñü]', ' ', text, flags=re.IGNORECASE)
+            
+            # 🔧 PASO 2: Normalizar espacios
+            clean_text = ' '.join(clean_text.split())
+            
+            # 🔧 PASO 3: Limitar longitud
+            clean_text = clean_text[:500]
+            
+            # 🔧 PASO 4: Verificar que el resultado sea legible
+            if len(clean_text.strip()) < 2:
+                return 'Texto no legible'
+            
+            return clean_text.strip()
+            
+        except Exception as e:
+            self.logger.warning(f"      ⚠️ Error en limpieza de texto: {e}")
+            return 'Error de codificación'
 
+
+
+
+    def _update_spreadsheet_for_email_only(self, email: Dict, invoice_data: Dict, results: Dict):
+        """
+        🔧 NUEVO MÉTODO: Actualiza la hoja de cálculo para emails SIN adjuntos
+        """
+        try:
+            spreadsheet_id = results.get('spreadsheet_id')
+            if not spreadsheet_id:
+                self.logger.warning("      ⚠️ No hay ID de hoja de cálculo")
+                return
+            
+            def clean_value(value, default=''):
+                """Limpia valores para la hoja de cálculo"""
+                if value is None:
+                    return default
+                # Aplicar limpieza de caracteres especiales
+                clean_val = self._clean_special_chars(str(value))
+                return clean_val[:500]  # Limitar longitud
+            
+            # Construir fila para la hoja de cálculo
+            row_data = [
+                # 1. ID del Email
+                str(email.get('id', '')),
+                
+                # 2. Fecha Procesamiento
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                
+                # 3. 🔧 CORRECCIÓN: Fecha Email
+                clean_value(email.get('date', '').split(' ')[0] if email.get('date') else ''),
+                
+                # 4. 🔧 CORRECCIÓN: Remitente limpio
+                clean_value(email.get('sender', '')),
+                
+                # 5. Destinatario
+                clean_value(email.get('recipient', email.get('to', ''))),
+                
+                # 6. Asunto
+                clean_value(email.get('subject', '')),
+                
+                # 7. Tiene Adjuntos
+                'No',
+                
+                # 8. Cantidad Adjuntos
+                '0',
+                
+                # 9. Nombres Adjuntos
+                '',
+                
+                # 10. Rutas Adjuntos
+                '',
+                
+                # 11. 🔧 CORRECCIÓN: Fecha Factura (fecha del email)
+                clean_value(invoice_data.get('invoice_date', '')),
+                
+                # 12. 🔧 CORRECCIÓN: Proveedor limpio
+                clean_value(invoice_data.get('vendor', 'No identificado')),
+                
+                # 13. Número Factura
+                clean_value(invoice_data.get('invoice_number', '')),
+                
+                # 14. 🔧 CORRECCIÓN: Concepto del email
+                clean_value(invoice_data.get('concept', 'Sin contenido')),
+                
+                # 15. Monto
+                '',
+                
+                # 16. Moneda
+                'N/A',
+                
+                # 17. Impuestos
+                '',
+                
+                # 18. Método Extracción
+                clean_value(invoice_data.get('extraction_method', 'email_content_only')),
+                
+                # 19. Confianza
+                f"{invoice_data.get('confidence', 0):.1%}",
+                
+                # 20. Longitud Contenido
+                str(len(email.get('body', ''))),
+                
+                # 21. Estado
+                'Email sin adjuntos procesado'
+            ]
+            
+            # Verificar que tenemos el número correcto de campos
+            if len(row_data) != 21:
+                self.logger.warning(f"      ⚠️ Número de campos incorrecto: {len(row_data)}, esperado: 21")
+                # Ajustar a 21 campos
+                while len(row_data) < 21:
+                    row_data.append('')
+                row_data = row_data[:21]
+            
+            # Agregar fila a la hoja
+            if self.drive_client.append_to_spreadsheet(spreadsheet_id, row_data):
+                self.logger.info(f"        ✅ Email sin adjuntos agregado a hoja de cálculo")
+            else:
+                self.logger.error(f"        ❌ Error agregando email sin adjuntos a hoja")
+                
+        except Exception as e:
+            self.logger.error(f"        ⚠️ Error actualizando hoja para email sin adjuntos: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    
+    
     def _create_minimal_invoice_data(self, email: Dict, attachment: Dict) -> Dict[str, Any]:
         """
         Crea datos mínimos de factura cuando no se puede extraer nada

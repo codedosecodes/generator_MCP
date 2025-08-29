@@ -18,6 +18,7 @@ Google Drive Client - DOCUFIND
 Cliente para interactuar con Google Drive y Sheets
 """
 
+import email
 import os
 import io
 import json
@@ -932,47 +933,59 @@ class GoogleDriveClient:
         
             
     
-    def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
-        """Procesa un correo individual"""
-        try:
-            self.logger.info(f"\\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
-            self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
-            self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
+    #def _process_single_email(self, email: Dict, idx: int, total: int, results: Dict):
+    #    """Procesa un correo individual - CORREGIDO para emails sin adjuntos"""
+    #    try:
+    #        self.logger.info(f"\n[{idx}/{total}] Procesando: {email.get('subject', 'Sin asunto')}")
+    #        self.logger.info(f"  De: {email.get('sender', 'Desconocido')}")
+    #        self.logger.info(f"  Fecha: {email.get('date', 'Sin fecha')}")
+    #        
+    #        self.stats['emails_procesados'] += 1
+    #        
+    #        # IMPORTANTE: Guardar contexto del email actual
+    #        self.current_email = email
+    #        
+    #        # Extraer adjuntos
+    #        attachments = self.email_processor.get_attachments(email['id'])
+    #        
+    #        # Guardar contexto de adjuntos
+    #        self.current_attachments = attachments
+    #        
+    #        if not attachments:
+    #            self.logger.info("  ⚠️ No se encontraron adjuntos")
+    #            
+    #            # 🔧 CORRECCIÓN 1: PROCESAR EMAILS SIN ADJUNTOS
+    #            # Crear datos de factura para emails sin adjuntos usando el contenido del email
+    #            email_body = self._get_complete_email_content(email)
+    #            
+    #            # Preparar contexto del email
+    #            email_context = {
+    #                'sender': email.get('sender', ''),
+    #                'subject': email.get('subject', ''),
+    #                'date': email.get('date', ''),
+    #                'body': email_body,
+    #                'filename': 'email_content'  # No hay archivo físico
+    #            }
+    #            
+    #            # 🔧 APLICAR LAS CORRECCIONES TAMBIÉN A EMAILS SIN ADJUNTOS
+    #            invoice_data = self._create_invoice_data_for_email_only(email_context)
+    #            
+    #            # Actualizar hoja de cálculo con datos del email sin adjuntos
+    #            self._update_spreadsheet_for_email_only(email, invoice_data, results)
+    #            
+    #            self.stats['emails_sin_adjuntos'] += 1
+    #            return
+    #        
+    #        # Si tiene adjuntos, procesar normalmente
+    #        for attachment in attachments:
+    #            self._process_attachment(email, attachment, results)
+    #            
+    #        self.stats['emails_con_adjuntos'] += 1
+    #        
+    #    except Exception as e:
+    #        self.logger.error(f"    ❌ Error procesando email: {e}")
+    #        self.stats['errores'] += 1   
             
-            self.stats['emails_procesados'] += 1
-            
-            # IMPORTANTE: Guardar contexto del email actual
-            self.current_email = email
-            
-            # Extraer adjuntos
-            attachments = self.email_processor.get_attachments(email['id'])
-            
-            # Guardar contexto de adjuntos
-            self.current_attachments = attachments
-            
-            if not attachments:
-                self.logger.info("  ⚠️ No se encontraron adjuntos")
-                # Aún así registrar el email sin adjuntos
-                self._update_spreadsheet({}, None)
-                return
-            
-            self.logger.info(f"  📎 {len(attachments)} adjuntos encontrados")
-            
-            # Procesar cada adjunto
-            for attachment in attachments:
-                self._process_attachment(email, attachment, results)
-            
-            results['success'].append({
-                'email_id': email['id'],
-                'subject': email.get('subject'),
-                'sender': email.get('sender'),
-                'date': email.get('date'),
-                'attachments_processed': len(attachments)
-            })
-            
-        except Exception as e:
-            self.logger.error(f"  ❌ Error procesando correo: {e}")
-            self.stats['errores'] += 1
             
     def search_files(self, query: str, max_results: int = 10) -> List[Dict[str, str]]:
         """

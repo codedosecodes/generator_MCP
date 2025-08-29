@@ -827,17 +827,35 @@ def _extract_sender_name(self, sender: str) -> str:
     return ''
 
 def _clean_special_chars(self, text: str) -> str:
-    """Limpia caracteres especiales del texto"""
+    """
+    🔧 MÉTODO MEJORADO: Limpia caracteres especiales y ilegibles de forma agresiva
+    """
     if not text:
         return text
     
-    # Eliminar caracteres no ASCII problemáticos
-    clean_text = text.encode('ascii', 'ignore').decode('ascii')
-    
-    # Normalizar espacios
-    clean_text = ' '.join(clean_text.split())
-    
-    return clean_text[:500]  # Limitar longitud
+    try:
+        # 🔧 PASO 1: Eliminar caracteres no ASCII problemáticos
+        # Solo mantener caracteres alfanuméricos, espacios y puntuación básica
+        import re
+        
+        # Permitir solo caracteres seguros
+        clean_text = re.sub(r'[^\w\s\-.,@áéíóúñü]', ' ', text, flags=re.IGNORECASE)
+        
+        # 🔧 PASO 2: Normalizar espacios
+        clean_text = ' '.join(clean_text.split())
+        
+        # 🔧 PASO 3: Limitar longitud
+        clean_text = clean_text[:200]
+        
+        # 🔧 PASO 4: Verificar que el resultado sea legible
+        if len(clean_text.strip()) < 2:
+            return 'Texto no legible'
+        
+        return clean_text.strip()
+        
+    except Exception as e:
+        self.logger.warning(f"      ⚠️ Error en limpieza de texto: {e}")
+        return 'Error de codificación'
 
 # 🔧 CORRECCIÓN 3: MEJOR LIMPIEZA DEL CONTENIDO DEL EMAIL
 def _clean_email_body(self, body: str) -> str:
