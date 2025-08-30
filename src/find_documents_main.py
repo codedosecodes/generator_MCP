@@ -632,88 +632,100 @@ class DocuFindProcessor:
             self.logger.error(f"    ❌ Error procesando adjunto: {e}")
             self.stats['errores'] += 1
     
-    #def _extract_invoice_with_context(self, content: bytes, email_context: Dict) -> Dict[str, Any]:
-    #    """
-    #    Extrae datos de factura usando el contexto del email
-    #    
-    #    Args:
-    #        content: Contenido del archivo adjunto
-    #        email_context: Información del email (sender, subject, date, body)
-    #    
-    #    Returns:
-    #        Diccionario con datos extraídos y mejorados
-    #    """
-    #    # Primero intentar extracción normal
-    #    invoice_data = self.invoice_extractor.extract(content)
-    #    
-    #    if not invoice_data:
-    #        invoice_data = {}
-    #    
-    #    # MEJORA 1: CONCEPTO - Usar el cuerpo del email
-    #    if not invoice_data.get('concept') or invoice_data.get('concept') == 'Documento adjunto':
-    #        # Obtener el cuerpo del email
-    #        email_body = email_context.get('body', '')
-    #        
-    #        if email_body:
-    #            # Limpiar el cuerpo del email
-    #            clean_body = self._clean_email_body(email_body)
-    #            
-    #            # Tomar los primeros 500 caracteres del cuerpo limpio
-    #            if len(clean_body) > 500:
-    #                invoice_data['concept'] = clean_body[:497] + '...'
-    #            else:
-    #                invoice_data['concept'] = clean_body if clean_body else f"Adjunto: {email_context.get('filename', 'documento')}"
-    #        else:
-    #            # Si no hay cuerpo, usar el asunto
-    #            subject = email_context.get('subject', '')
-    #            invoice_data['concept'] = subject[:500] if subject else f"Adjunto: {email_context.get('filename', 'documento')}"
-    #    
-    #    # MEJORA 2: FECHA FACTURA - Usar fecha del email
-    #    if not invoice_data.get('invoice_date') or self._has_special_chars(invoice_data.get('invoice_date', '')):
-    #        # Usar la fecha del email
-    #        email_date = email_context.get('date', '')
-    #        if email_date:
-    #            # Tomar solo la parte de la fecha (sin hora)
-    #            if ' ' in email_date:
-    #                email_date = email_date.split(' ')[0]
-    #            invoice_data['invoice_date'] = email_date
-    #        else:
-    #            invoice_data['invoice_date'] = datetime.now().strftime('%Y-%m-%d')
-    #    
-    #    # MEJORA 3: PROVEEDOR - Usar dominio del remitente + resumen
-    #    if not invoice_data.get('vendor') or invoice_data.get('vendor') == 'No identificado':
-    #        sender = email_context.get('sender', '')
-    #        
-    #        if sender:
-    #            # Extraer dominio del email
-    #            domain = self._extract_domain_from_sender(sender)
-    #            
-    #            # Intentar obtener nombre del remitente
-    #            sender_name = self._extract_sender_name(sender)
-    #            
-    #            # Crear resumen del proveedor
-    #            if domain:
-    #                # Formato: "dominio.com - Nombre o Asunto"
-    #                if sender_name and sender_name != domain:
-    #                    invoice_data['vendor'] = f"{domain} - {sender_name}"
-    #                else:
-    #                    # Usar parte del asunto si no hay nombre
-    #                    subject = email_context.get('subject', '')
-    #                    if subject:
-    #                        # Tomar las primeras palabras del asunto
-    #                        subject_summary = ' '.join(subject.split()[:5])
-    #                        invoice_data['vendor'] = f"{domain} - {subject_summary}"
-    #                    else:
-    #                        invoice_data['vendor'] = domain
-    #            else:
-    #                invoice_data['vendor'] = sender[:100] if sender else 'Remitente desconocido'
-    #    
-    #    # Limpiar todos los valores de caracteres especiales
-    #    for key, value in invoice_data.items():
-    #        if isinstance(value, str):
-    #            invoice_data[key] = self._clean_special_chars(value)
-    #    
-    #    return invoice_data
+    def process_attachment_to_drive(self, attachment_data, email_date, email_id):
+        """
+        Procesa un adjunto y lo sube a Google Drive
+        
+        Args:
+            attachment_data: Datos del adjunto
+            email_date: Fecha del email
+            email_id: ID del email
+        
+        Returns:
+            dict: Información del procesamiento
+        """
+        try:
+            filename = attachment_data.get('filename', 'attachment')
+            file_extension = os.path.splitext(filename)[1].lower()
+            
+            # Filtrar archivos de imagen que son logos o elementos de diseño
+            skip_patterns = [
+                'email_body', 'logo', 'signature', 'header', 'footer',
+                'banner', 'icon', 'badge', 'folio_email_body'
+            ]
+            
+            if any(pattern in filename.lower() for pattern in skip_patterns):
+                # Para archivos de diseño de email, procesarlos diferente
+                if 'folio_email_body' in filename.lower():
+                    self.logger.info(f"⚠️ Omitiendo imagen de diseño de email: {filename}")
+                    return {
+                        'status': 'skipped',
+                        'reason': 'email_design_element',
+                        'filename': filename
+                    }
+            
+            # Crear carpeta temporal si no existe
+            temp_dir = "temp"
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+            
+            # Guardar archivo temporalmente
+            temp_path = os.path.join(temp_dir, f"{email_id}_{filename}")
+            
+            # Escribir contenido del adjunto
+            with open(temp_path, 'wb') as f:
+                f.write(attachment_data['content'])
+            
+            # Determinar carpeta de destino según el tipo de archivo
+            if file_extension in ['.pdf', '.doc', '.docx']:
+                folder_type = 'Facturas'
+            elif file_extension in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                folder_type = 'Imagenes'
+            elif file_extension in ['.xls', '.xlsx', '.csv']:
+                folder_type = 'Hojas_Calculo'
+            else:
+                folder_type = 'Otros'
+            
+            # Crear estructura de carpetas
+            year = email_date.year
+            month = email_date.strftime('%m_%B')
+            day = email_date.strftime('%d')
+            
+            # Crear carpetas en Drive
+            folder_path = f"DOCUFIND/{year}/{month}/{day}/{folder_type}"
+            folder_id = self.create_folder_structure(folder_path)
+            
+            # Subir archivo a Drive
+            uploaded_file = self.upload_file(temp_path, folder_id, email_date)
+            
+            # Limpiar archivo temporal
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+            
+            if uploaded_file:
+                return {
+                    'status': 'success',
+                    'file_id': uploaded_file['id'],
+                    'file_name': uploaded_file['name'],
+                    'folder_path': folder_path,
+                    'web_link': uploaded_file.get('webViewLink')
+                }
+            else:
+                return {
+                    'status': 'error',
+                    'reason': 'upload_failed',
+                    'filename': filename
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error procesando adjunto: {str(e)}")
+            return {
+                'status': 'error',
+                'reason': str(e),
+                'filename': filename
+            }
     
         
     def _extract_invoice_with_context(self, content: bytes, email_context: Dict) -> Dict[str, Any]:

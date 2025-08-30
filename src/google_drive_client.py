@@ -242,98 +242,107 @@ class GoogleDriveClient:
             logger.error(f"❌ Error creando ruta de carpetas: {e}")
             return None
     
-    def upload_file(self, 
-                   content: Union[bytes, str],
-                   filename: str,
-                   folder_id: Optional[str] = None,
-                   metadata: Optional[Dict] = None) -> Optional[str]:
+    def upload_file(self, file_path, folder_id, email_date=None):
         """
         Sube un archivo a Google Drive
         
         Args:
-            content: Contenido del archivo (bytes o path)
-            filename: Nombre del archivo
-            folder_id: ID de la carpeta destino
-            metadata: Metadata adicional
-            
-        Returns:
-            ID del archivo subido
-        """
-        if not self.drive_service:
-            if not self.authenticate():
-                return None
+            file_path: Ruta del archivo local
+            folder_id: ID de la carpeta de destino
+            email_date: Fecha del email (opcional)
         
+        Returns:
+            dict: Información del archivo subido o None si hay error
+        """
         try:
-            # Preparar metadata
-            file_metadata = {'name': filename}
+            # Determinar el tipo MIME del archivo
+            file_extension = os.path.splitext(file_path)[1].lower()
             
-            if folder_id:
-                file_metadata['parents'] = [folder_id]
+            # Mapeo de extensiones a tipos MIME
+            mime_types = {
+                '.pdf': 'application/pdf',
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif',
+                '.bmp': 'image/bmp',
+                '.tiff': 'image/tiff',
+                '.doc': 'application/msword',
+                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                '.xls': 'application/vnd.ms-excel',
+                '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            }
             
+            mimetype = mime_types.get(file_extension, 'application/octet-stream')
             
-            if metadata:
-                # Solo incluir propiedades cortas y esenciales
-                limited_metadata = {}
-                
-                # Campos permitidos con valores cortos
-                if 'invoice_number' in metadata:
-                    # Limitar a 20 caracteres
-                    inv_num = str(metadata['invoice_number'])[:20]
-                    if inv_num:
-                        limited_metadata['inv'] = inv_num
-                
-                if 'vendor' in metadata:
-                    # Limitar vendor a 30 caracteres
-                    vendor = str(metadata['vendor'])[:30]
-                    if vendor:
-                        limited_metadata['vnd'] = vendor
-                
-                if 'amount' in metadata:
-                    # Solo el monto como string corto
-                    amount = str(metadata['amount'])[:15]
-                    if amount:
-                        limited_metadata['amt'] = amount
-                
-                # Solo agregar si el total es menor a 100 bytes
-                total_size = sum(len(k) + len(v) for k, v in limited_metadata.items())
-                if total_size < 100:  # Dejar margen de seguridad
-                    file_metadata['properties'] = limited_metadata
-                else:
-                    logger.debug("Metadata muy larga, omitiendo propiedades personalizadas")
+            # Generar nombre único para el archivo
+            base_name = os.path.basename(file_path)
             
-            
-            # Determinar tipo MIME
-            mime_type = self._get_mime_type(filename)
-            
-            # Crear media upload
-            if isinstance(content, bytes):
-                media = MediaIoBaseUpload(
-                    io.BytesIO(content),
-                    mimetype=mime_type,
-                    resumable=True
-                )
+            # Si hay fecha del email, usarla para el timestamp
+            if email_date:
+                try:
+                    # Manejar diferentes formatos de fecha
+                    if isinstance(email_date, str):
+                        # Intentar parsear la fecha string
+                        # Formato: "2025-06-22 02:50:02" o similar
+                        if ' ' in email_date:
+                            date_part = email_date.split(' ')[0]
+                            timestamp = date_part.replace('-', '')
+                        else:
+                            timestamp = email_date.replace('-', '')
+                    elif hasattr(email_date, 'strftime'):
+                        # Es un objeto datetime
+                        timestamp = email_date.strftime('%Y%m%d')
+                    else:
+                        # Usar timestamp actual si no se puede procesar
+                        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+                except Exception as e:
+                    self.logger.warning(f"Error procesando fecha para timestamp: {e}")
+                    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             else:
-                # Si es un path
-                media = MediaFileUpload(
-                    content,
-                    mimetype=mime_type,
-                    resumable=True
-                )
+                timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             
-            # Subir archivo
-            file = self.drive_service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id'
+            # Crear nombre único con timestamp
+            name_parts = os.path.splitext(base_name)
+            unique_name = f"[{timestamp[:6]}]_{name_parts[0]}{name_parts[1]}"
+            
+            # Verificar si el archivo ya existe en la carpeta
+            existing_files = self.service.files().list(
+                q=f"'{folder_id}' in parents and name='{unique_name}' and trashed=false",
+                fields="files(id, name)"
             ).execute()
             
-            file_id = file.get('id')
-            logger.info(f"✅ Archivo subido: {filename} (ID: {file_id})")
+            if existing_files.get('files'):
+                self.logger.info(f"Archivo ya existe en Drive: {unique_name}")
+                return existing_files['files'][0]
             
-            return file_id
+            # Preparar metadata del archivo
+            file_metadata = {
+                'name': unique_name,
+                'parents': [folder_id]
+            }
             
-        except HttpError as e:
-            logger.error(f"❌ Error subiendo archivo: {e}")
+            # Crear media upload con el tipo MIME correcto
+            media = MediaFileUpload(
+                file_path,
+                mimetype=mimetype,
+                resumable=True
+            )
+            
+            # Subir el archivo
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, name, webViewLink'
+            ).execute()
+            
+            self.logger.info(f"✅ Archivo subido exitosamente: {unique_name}")
+            return file
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error subiendo archivo a Drive: {str(e)}")
+            self.logger.error(f"   Archivo: {file_path}")
+            self.logger.error(f"   Tipo MIME: {mimetype}")
             return None
     
    
