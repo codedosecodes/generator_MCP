@@ -439,35 +439,106 @@ class EmailProcessor:
         return False
     
     def _get_email_body(self, msg: Message) -> str:
-        """Extrae el cuerpo del email"""
+        """
+        Extrae el cuerpo del email con preferencia por texto plano
+        
+        Args:
+            msg: Mensaje de email
+            
+        Returns:
+            Cuerpo del email como texto
+        """
         body = ""
         
         if msg.is_multipart():
+            # Primero intentar obtener texto plano
+            text_plain = None
+            text_html = None
+            
             for part in msg.walk():
                 content_type = part.get_content_type()
-                content_disposition = str(part.get("Content-Disposition"))
+                content_disposition = str(part.get("Content-Disposition", ""))
                 
-                if "attachment" not in content_disposition:
-                    if content_type == "text/plain":
+                # Skip attachments
+                if "attachment" in content_disposition:
+                    continue
+                    
+                try:
+                    payload = part.get_payload(decode=True)
+                    if not payload:
+                        continue
+                        
+                    # Intentar decodificar con diferentes encodings
+                    text = None
+                    for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'windows-1252']:
                         try:
-                            body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            text = payload.decode(encoding)
                             break
                         except:
-                            pass
-                    elif content_type == "text/html" and not body:
-                        try:
-                            html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                            # Remover tags HTML básicos
-                            body = re.sub('<[^<]+?>', '', html_body)
-                        except:
-                            pass
+                            continue
+                    
+                    if not text:
+                        text = payload.decode('utf-8', errors='ignore')
+                    
+                    if content_type == "text/plain":
+                        text_plain = text
+                    elif content_type == "text/html":
+                        text_html = text
+                        
+                except Exception as e:
+                    logger.debug(f"Error procesando parte del mensaje: {e}")
+                    continue
+            
+            # Preferir texto plano sobre HTML
+            if text_plain:
+                body = text_plain
+            elif text_html:
+                # Si solo hay HTML, hacer limpieza básica
+                import re
+                # Remover scripts y estilos
+                body = re.sub(r'<script[^>]*>.*?</script>', '', text_html, flags=re.DOTALL)
+                body = re.sub(r'<style[^>]*>.*?</style>', '', body, flags=re.DOTALL)
+                # Convertir saltos de línea HTML
+                body = body.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+                body = body.replace('</p>', '\n').replace('</div>', '\n')
+                # Remover todas las etiquetas HTML
+                body = re.sub(r'<[^>]+>', '', body)
+                # Decodificar entidades HTML básicas
+                body = body.replace('&nbsp;', ' ').replace('&amp;', '&')
+                body = body.replace('&lt;', '<').replace('&gt;', '>')
+                body = body.replace('&quot;', '"').replace('&#39;', "'")
         else:
+            # Email de una sola parte
             try:
-                body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
-            except:
+                payload = msg.get_payload(decode=True)
+                if payload:
+                    # Intentar múltiples encodings
+                    for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'windows-1252']:
+                        try:
+                            body = payload.decode(encoding)
+                            break
+                        except:
+                            continue
+                    
+                    if not body:
+                        body = payload.decode('utf-8', errors='ignore')
+                else:
+                    body = msg.get_payload()
+            except Exception as e:
+                logger.debug(f"Error obteniendo payload: {e}")
                 body = str(msg.get_payload())
         
-        return body.strip()
+        # Limpieza final
+        body = body.strip()
+        
+        # Si el body está vacío, intentar obtener algo del mensaje
+        if not body:
+            # Intentar obtener el subject como último recurso
+            subject = msg.get('Subject', '')
+            if subject:
+                body = f"[Contenido no disponible. Asunto: {subject}]"
+        
+        return body
     
     def _get_email_body_by_id(self, email_id: str) -> str:
         """

@@ -572,7 +572,7 @@ class DocuFindProcessor:
                 str(len(attachments_info)) if attachments_info else '0',
                 
                 # 7. Nombres Adjuntos
-                ', '.join(attachment_names)[:500] if attachment_names else '',
+                ', '.join(attachment_names)[:1000] if attachment_names else '',
                 
                 # 8. Fecha Factura (SIEMPRE la fecha del email)
                 fecha_factura,
@@ -680,49 +680,163 @@ class DocuFindProcessor:
         
     def _extract_email_concept(self, email_info: Dict) -> str:
         """
-        Extrae un concepto legible del email
+        Extrae un concepto legible del email limpiando HTML/CSS
         
         Args:
             email_info: Información del email
         
         Returns:
-            Concepto de máximo 500 caracteres
+            Concepto de máximo 1000 caracteres sin HTML/CSS
         """
         import re
+        from html.parser import HTMLParser
         
-        # Prioridad 1: Asunto del email
+        class HTMLTextExtractor(HTMLParser):
+            """Parser para extraer solo texto de HTML"""
+            def __init__(self):
+                super().__init__()
+                self.text_parts = []
+                self.skip_tags = {'script', 'style', 'meta', 'link'}
+                self.current_tag = None
+                
+            def handle_starttag(self, tag, attrs):
+                self.current_tag = tag.lower()
+                
+            def handle_endtag(self, tag):
+                self.current_tag = None
+                
+            def handle_data(self, data):
+                if self.current_tag not in self.skip_tags:
+                    text = data.strip()
+                    if text:
+                        self.text_parts.append(text)
+            
+            def get_text(self):
+                return ' '.join(self.text_parts)
+        
+        # Prioridad 1: Asunto del email (limpio)
         subject = email_info.get('subject', '')
         
         # Prioridad 2: Cuerpo del email
         body = email_info.get('body', '')
         
+        # Si el cuerpo parece tener HTML, extraer solo el texto
+        if '<' in body and '>' in body:
+            try:
+                # Usar el parser HTML para extraer texto
+                parser = HTMLTextExtractor()
+                parser.feed(body)
+                body_text = parser.get_text()
+            except:
+                # Si falla el parser, usar método de respaldo
+                body_text = body
+        else:
+            body_text = body
+        
         # Combinar asunto y cuerpo
-        full_text = f"{subject}. {body}"
+        full_text = f"{subject}. {body_text}"
         
-        # Limpiar el texto
-        # Remover URLs
-        full_text = re.sub(r'http[s]?://\S+', '', full_text)
-        # Remover emails
-        full_text = re.sub(r'[\w\.-]+@[\w\.-]+', '', full_text)
-        # Remover HTML/XML tags
+        # === LIMPIEZA PROFUNDA ===
+        
+        # 1. Remover estilos CSS inline y clases
+        full_text = re.sub(r'\.custom-[a-z0-9]+\{[^}]*\}', '', full_text)
+        full_text = re.sub(r'style="[^"]*"', '', full_text)
+        full_text = re.sub(r'style=\'[^\']*\'', '', full_text)
+        full_text = re.sub(r'class="[^"]*"', '', full_text)
+        full_text = re.sub(r'class=\'[^\']*\'', '', full_text)
+        
+        # 2. Remover todas las etiquetas HTML restantes
+        full_text = re.sub(r'<script[^>]*>.*?</script>', '', full_text, flags=re.DOTALL)
+        full_text = re.sub(r'<style[^>]*>.*?</style>', '', full_text, flags=re.DOTALL)
         full_text = re.sub(r'<[^>]+>', '', full_text)
-        # Remover caracteres especiales de XML/namespaces
-        full_text = re.sub(r'xmlns[^"]*"[^"]*"', '', full_text)
-        full_text = re.sub(r'rdf:\w+="[^"]*"', '', full_text)
-        # Remover múltiples espacios
+        
+        # 3. Decodificar entidades HTML
+        html_entities = {
+            '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>',
+            '&quot;': '"', '&#39;': "'", '&apos;': "'",
+            '&ndash;': '-', '&mdash;': '-', '&hellip;': '...',
+            '&copy;': '©', '&reg;': '®', '&trade;': '™'
+        }
+        for entity, char in html_entities.items():
+            full_text = full_text.replace(entity, char)
+        
+        # 4. Remover URLs
+        full_text = re.sub(r'https?://[^\s]+', '', full_text)
+        full_text = re.sub(r'www\.[^\s]+', '', full_text)
+        
+        # 5. Remover emails
+        full_text = re.sub(r'[\w\.-]+@[\w\.-]+\.\w+', '', full_text)
+        
+        # 6. Remover selectores CSS y propiedades
+        # Patrones como: margin:20px; font-family:system-ui; etc.
+        full_text = re.sub(r'[a-z-]+:\s*[^;]+;', '', full_text)
+        full_text = re.sub(r'[a-z-]+:\s*[^,\s]+(?:,|\s)', '', full_text)
+        
+        # 7. Remover valores CSS sueltos
+        # Patrones como: rgb(51, 51, 51), #027eff, 20px, etc.
+        full_text = re.sub(r'rgb\([^)]+\)', '', full_text)
+        full_text = re.sub(r'rgba\([^)]+\)', '', full_text)
+        full_text = re.sub(r'#[0-9a-fA-F]{3,6}\b', '', full_text)
+        full_text = re.sub(r'\b\d+px\b', '', full_text)
+        full_text = re.sub(r'\b\d+em\b', '', full_text)
+        full_text = re.sub(r'\b\d+%\b', '', full_text)
+        
+        # 8. Remover nombres de fuentes y valores CSS comunes
+        css_values = [
+            'sans-serif', 'serif', 'monospace', 'Arial', 'Helvetica',
+            'system-ui', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto',
+            'bold', 'italic', 'normal', 'underline', 'none',
+            'block', 'inline', 'flex', 'grid', 'absolute', 'relative',
+            'auto', 'inherit', 'initial', 'unset'
+        ]
+        for value in css_values:
+            full_text = re.sub(r'\b' + re.escape(value) + r'\b', '', full_text, flags=re.IGNORECASE)
+        
+        # 9. Remover caracteres especiales de programación/markup
+        full_text = re.sub(r'[{}()\[\];:<>]', ' ', full_text)
+        
+        # 10. Remover múltiples espacios, tabs y saltos de línea
         full_text = re.sub(r'\s+', ' ', full_text)
-        # Remover caracteres no imprimibles
-        full_text = ''.join(char for char in full_text if char.isprintable() or char.isspace())
         
-        # Tomar primeros 500 caracteres
-        concept = full_text.strip()[:500]
+        # 11. Remover espacios alrededor de puntuación
+        full_text = re.sub(r'\s+([.,!?])', r'\1', full_text)
+        full_text = re.sub(r'([.,!?])\s+', r'\1 ', full_text)
         
-        # Si está vacío, usar valores por defecto
+        # 12. Limpiar principio y final
+        full_text = full_text.strip()
+        
+        # 13. Remover puntos y comas consecutivos
+        full_text = re.sub(r'[.,]{2,}', '.', full_text)
+        
+        # 14. Si después de toda la limpieza queda muy poco texto, intentar método alternativo
+        if len(full_text) < 50:
+            # Intentar extraer solo el asunto y las primeras palabras del body original
+            simple_text = subject
+            if body:
+                # Tomar solo texto alfanumérico del body
+                body_words = re.findall(r'\b[A-Za-z0-9]+\b', body)
+                if body_words:
+                    simple_text += '. ' + ' '.join(body_words[:100])
+            full_text = simple_text
+        
+        # 15. Asegurar que no hay caracteres no imprimibles
+        full_text = ''.join(char for char in full_text if char.isprintable() or char == ' ')
+        
+        # Tomar primeros 1000 caracteres (aumentado de 500)
+        concept = full_text[:1000]
+        
+        # Si está vacío o muy corto, usar valores por defecto
         if not concept or len(concept) < 10:
             if subject:
                 concept = f"Email: {subject}"
             else:
                 concept = "Email sin contenido extraíble"
+        
+        # Asegurar que termina en un punto o espacio (no cortar palabras)
+        if len(concept) == 1000:
+            last_space = concept.rfind(' ', 950, 1000)
+            if last_space > 0:
+                concept = concept[:last_space] + '...'
         
         return concept
     
