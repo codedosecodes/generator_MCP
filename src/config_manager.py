@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-# 
-# ===========================================================
-# config_manager.py
-# Part of the DOCUFIND Project (MCP-based Document Processor)
-#
-# Author: Gabriel Mauricio Cortés
-# Created on: 24/12/2024
-# License: MIT
-# Description:
-#   This module is part of an academic extracurricular project
-#   that demonstrates the use of Model Context Protocol (MCP)
-#   for intelligent document processing and cloud integration.
-# ===========================================================
-
 """
 Config Manager - DOCUFIND
 Gestor de configuración compatible con tu estructura actual
@@ -111,9 +97,6 @@ class ConfigManager:
                 "create_month_folders": True,
                 "upload_reports": True
             },
-            "spreadsheet_name": config.get("google_services", {}).get("spreadsheet_name"),
-            "spreadsheet_name_pattern": config.get("google_services", {}).get("spreadsheet_name_pattern"),
-            "spreadsheet_prefix": config.get("google_services", {}).get("spreadsheet_prefix", "DOCUFIND_Facturas"),
             
             # Configuración de extracción
             "extraction": {
@@ -175,19 +158,12 @@ class ConfigManager:
                 "end_date": config.get("search_parameters", {}).get("end_date"),
                 "skip_processed": True,
                 "min_attachment_size_kb": 1,
-                "max_attachment_size_mb": 20,
+                "max_attachment_size_mb": 10,
                 "allowed_extensions": [
                     ".pdf", ".xml", ".xlsx", ".xls",
                     ".doc", ".docx", ".txt", ".csv"
                 ],
                 "folder_name": config.get("search_parameters", {}).get("folder_name", "Documentos_Procesados_2025")
-            },
-            
-            "search_parameters": {
-                "start_date": config.get("search_parameters", {}).get("start_date"),
-                "end_date": config.get("search_parameters", {}).get("end_date"),
-                "keywords": config.get("search_parameters", {}).get("keywords", []),
-                # ... resto de search_parameters
             },
             
             # Configuración de categorías

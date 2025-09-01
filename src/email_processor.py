@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-# 
-# ===========================================================
-# email_processor.py
-# Part of the DOCUFIND Project (MCP-based Document Processor)
-#
-# Author: Gabriel Mauricio Cortés
-# Created on: 24/12/2024
-# License: MIT
-# Description:
-#   This module is part of an academic extracurricular project
-#   that demonstrates the use of Model Context Protocol (MCP)
-#   for intelligent document processing and cloud integration.
-# ===========================================================
-
 """
 Email Processor - DOCUFIND
 Procesador de correos con soporte para Gmail, Outlook y otros
@@ -452,171 +438,37 @@ class EmailProcessor:
                 return True
         return False
     
-    #def _get_email_body(self, msg: Message) -> str:
-    #    """Extrae el cuerpo del email"""
-    #    body = ""
-    #    
-    #    if msg.is_multipart():
-    #        for part in msg.walk():
-    #            content_type = part.get_content_type()
-    #            content_disposition = str(part.get("Content-Disposition"))
-    #            
-    #            if "attachment" not in content_disposition:
-    #                if content_type == "text/plain":
-    #                    try:
-    #                        body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-    #                        break
-    #                    except:
-    #                        pass
-    #                elif content_type == "text/html" and not body:
-    #                    try:
-    #                        html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-    #                        # Remover tags HTML básicos
-    #                        body = re.sub('<[^<]+?>', '', html_body)
-    #                    except:
-    #                        pass
-    #    else:
-    #        try:
-    #            body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
-    #        except:
-    #            body = str(msg.get_payload())
-    #    
-    #    return body.strip()
-    #
-    
-    
-    
-    
     def _get_email_body(self, msg: Message) -> str:
-        """
-        🔧 MÉTODO MEJORADO: Extrae TODO el contenido del cuerpo del email
-        """
-        body_parts = []
+        """Extrae el cuerpo del email"""
+        body = ""
         
-        try:
-            if msg.is_multipart():
-                # Email con múltiples partes - procesar todas
-                for part in msg.walk():
-                    content_type = part.get_content_type()
-                    content_disposition = str(part.get("Content-Disposition"))
-                    
-                    # Solo procesar contenido que no sea adjunto
-                    if "attachment" not in content_disposition:
-                        
-                        # 1. Contenido texto plano
-                        if content_type == "text/plain":
-                            try:
-                                text_content = part.get_payload(decode=True)
-                                if text_content:
-                                    decoded = text_content.decode('utf-8', errors='ignore')
-                                    if decoded.strip():
-                                        body_parts.append(decoded.strip())
-                            except Exception as e:
-                                logger.debug(f"Error decodificando text/plain: {e}")
-                        
-                        # 2. Contenido HTML convertido a texto
-                        elif content_type == "text/html":
-                            try:
-                                html_content = part.get_payload(decode=True)
-                                if html_content:
-                                    decoded_html = html_content.decode('utf-8', errors='ignore')
-                                    # Convertir HTML a texto básico
-                                    import re
-                                    # Eliminar scripts y styles
-                                    clean_html = re.sub(r'<script[^>]*>.*?</script>', '', decoded_html, flags=re.DOTALL)
-                                    clean_html = re.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=re.DOTALL)
-                                    # Reemplazar algunos tags con espacios/saltos
-                                    clean_html = re.sub(r'</(div|p|br|h[1-6])>', '\n', clean_html)
-                                    clean_html = re.sub(r'<br[^>]*>', '\n', clean_html)
-                                    # Eliminar todos los tags HTML restantes
-                                    text_from_html = re.sub(r'<[^>]+>', ' ', clean_html)
-                                    # Decodificar entidades HTML básicas
-                                    text_from_html = text_from_html.replace('&nbsp;', ' ')
-                                    text_from_html = text_from_html.replace('&amp;', '&')
-                                    text_from_html = text_from_html.replace('&lt;', '<')
-                                    text_from_html = text_from_html.replace('&gt;', '>')
-                                    # Limpiar espacios extra
-                                    text_from_html = ' '.join(text_from_html.split())
-                                    
-                                    if text_from_html.strip():
-                                        body_parts.append(text_from_html.strip())
-                            except Exception as e:
-                                logger.debug(f"Error procesando HTML: {e}")
-                        
-                        # 3. Otros tipos de contenido de texto
-                        elif content_type.startswith("text/"):
-                            try:
-                                other_content = part.get_payload(decode=True)
-                                if other_content:
-                                    decoded = other_content.decode('utf-8', errors='ignore')
-                                    if decoded.strip():
-                                        body_parts.append(decoded.strip())
-                            except Exception as e:
-                                logger.debug(f"Error decodificando {content_type}: {e}")
-            
-            else:
-                # Email de una sola parte
-                try:
-                    content_type = msg.get_content_type()
-                    
-                    if content_type == "text/html":
-                        # Es HTML, convertir a texto
-                        html_content = msg.get_payload(decode=True)
-                        if html_content:
-                            decoded_html = html_content.decode('utf-8', errors='ignore')
-                            # Mismo proceso de limpieza HTML
-                            import re
-                            clean_html = re.sub(r'<script[^>]*>.*?</script>', '', decoded_html, flags=re.DOTALL)
-                            clean_html = re.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=re.DOTALL)
-                            clean_html = re.sub(r'</(div|p|br|h[1-6])>', '\n', clean_html)
-                            clean_html = re.sub(r'<br[^>]*>', '\n', clean_html)
-                            text_from_html = re.sub(r'<[^>]+>', ' ', clean_html)
-                            text_from_html = text_from_html.replace('&nbsp;', ' ')
-                            text_from_html = text_from_html.replace('&amp;', '&')
-                            text_from_html = ' '.join(text_from_html.split())
-                            body_parts.append(text_from_html.strip())
-                    else:
-                        # Texto plano o otro tipo
-                        body_content = msg.get_payload(decode=True)
-                        if body_content:
-                            decoded = body_content.decode('utf-8', errors='ignore')
-                            body_parts.append(decoded.strip())
-                        else:
-                            # Fallback: contenido sin decodificar
-                            raw_content = str(msg.get_payload())
-                            body_parts.append(raw_content.strip())
-                            
-                except Exception as e:
-                    logger.debug(f"Error procesando email simple: {e}")
-                    # Último fallback
-                    try:
-                        fallback_content = str(msg.get_payload())
-                        body_parts.append(fallback_content.strip())
-                    except:
-                        pass
-            
-            # Combinar todas las partes del contenido
-            if body_parts:
-                # Unir con separadores y limpiar
-                complete_body = '\n\n--- CONTENIDO ---\n\n'.join(body_parts)
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                content_disposition = str(part.get("Content-Disposition"))
                 
-                # Limpiar espacios excesivos y líneas vacías
-                import re
-                complete_body = re.sub(r'\n{3,}', '\n\n', complete_body)
-                complete_body = re.sub(r' {2,}', ' ', complete_body)
-                
-                logger.debug(f"Contenido completo extraído: {len(complete_body)} caracteres")
-                return complete_body.strip()
-            
-            # Si no se encontró contenido
-            logger.debug("No se pudo extraer contenido del email")
-            return ""
-            
-        except Exception as e:
-            logger.error(f"Error extrayendo cuerpo del email: {e}")
-            return ""
+                if "attachment" not in content_disposition:
+                    if content_type == "text/plain":
+                        try:
+                            body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            break
+                        except:
+                            pass
+                    elif content_type == "text/html" and not body:
+                        try:
+                            html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            # Remover tags HTML básicos
+                            body = re.sub('<[^<]+?>', '', html_body)
+                        except:
+                            pass
+        else:
+            try:
+                body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+            except:
+                body = str(msg.get_payload())
         
-        
+        return body.strip()
+    
     def send_notification(self, recipient: str, subject: str, body: str) -> bool:
         """
         Envía una notificación por email

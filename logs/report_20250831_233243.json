@@ -1,14 +1,14 @@
 {
-  "fecha_procesamiento": "2025-08-27T16:22:04.737185",
+  "fecha_procesamiento": "2025-08-31T23:32:43.951298",
   "estadisticas": {
-    "emails_procesados": 95,
+    "emails_procesados": 102,
     "facturas_extraidas": 0,
-    "archivos_subidos": 35,
+    "archivos_subidos": 0,
     "errores": 0,
-    "tiempo_inicio": "2025-08-27 16:17:16.309726",
+    "tiempo_inicio": "2025-08-31 23:27:30.829791",
     "tiempo_fin": null
   },
-  "exitosos": 25,
+  "exitosos": 29,
   "fallidos": 0,
   "detalles": {
     "success": [
@@ -186,6 +186,34 @@
         "sender": "Juan Carlos Bulla Mendez <juan.bulla@tiglobal.com.co>",
         "date": "2025-08-25 19:57:17",
         "attachments_processed": 5
+      },
+      {
+        "email_id": "144243",
+        "subject": "Your Sunday, Aug 24, 2025 - Friday, Aug 29, 2025 Stay at Sheraton\r\n Ann A ARBSI",
+        "sender": "Sheraton Ann A ARBSI <donotreply@marriott.com>",
+        "date": "2025-08-29 04:10:23",
+        "attachments_processed": 2
+      },
+      {
+        "email_id": "144244",
+        "subject": "Your Sunday, Aug 24, 2025 - Friday, Aug 29, 2025 Stay at Sheraton\r\n Ann A ARBSI",
+        "sender": "Sheraton Ann A ARBSI <donotreply@marriott.com>",
+        "date": "2025-08-29 04:10:22",
+        "attachments_processed": 2
+      },
+      {
+        "email_id": "144261",
+        "subject": "Your Sunday, Aug 24, 2025 - Friday, Aug 29, 2025 Stay at Sheraton\r\n Ann A ARBSI",
+        "sender": "Sheraton Ann A ARBSI <donotreply@marriott.com>",
+        "date": "2025-08-29 11:20:02",
+        "attachments_processed": 2
+      },
+      {
+        "email_id": "144266",
+        "subject": "Your Sunday, Aug 24, 2025 - Friday, Aug 29, 2025 Stay at Sheraton\r\n Ann A ARBSI",
+        "sender": "Sheraton Ann A ARBSI <donotreply@marriott.com>",
+        "date": "2025-08-29 12:50:06",
+        "attachments_processed": 2
       }
     ],
     "failed": [],

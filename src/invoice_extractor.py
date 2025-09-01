@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 
-# ===========================================================
-# invoice_extractor.py
-# Part of the DOCUFIND Project (MCP-based Document Processor)
-#
-# Author: Gabriel Mauricio Cortés
-# Created on: 24/12/2024
-# License: MIT
-# Description:
-#   This module is part of an academic extracurricular project
-#   that demonstrates the use of Model Context Protocol (MCP)
-#   for intelligent document processing and cloud integration.
-# ===========================================================
-
 """
 Invoice Extractor - DOCUFIND
 Extrae datos inteligentes de facturas de emails y adjuntos
@@ -186,54 +172,26 @@ class InvoiceExtractor:
             'miscellaneous': ['otros', 'other', 'misc', 'general']
         }
     
-    
-    
     def extract(self, content: Any) -> Optional[Dict[str, Any]]:
         """
         Extrae datos de factura del contenido
+        
+        Args:
+            content: Contenido a procesar (texto, bytes, o dict)
+            
+        Returns:
+            Diccionario con datos extraídos o None
         """
         try:
-            # Convertir contenido a texto
+            # Convertir contenido a texto si es necesario
             text = self._content_to_text(content)
             
             if not text:
                 logger.warning("⚠️ No se pudo obtener texto del contenido")
                 return None
             
-            # CORRECCIÓN: Limpiar el texto antes de procesar
-            # Eliminar caracteres no imprimibles
-            text = ''.join(char for char in text if char.isprintable() or char.isspace())
-            
-            # Reemplazar múltiples espacios
-            text = ' '.join(text.split())
-            
             # Extraer datos usando patrones
             extracted_data = self._extract_with_patterns(text)
-            
-            # CORRECCIÓN: Limpiar datos extraídos
-            for key, value in extracted_data.items():
-                if isinstance(value, str):
-                    # Eliminar caracteres extraños
-                    value = value.encode('ascii', 'ignore').decode('ascii')
-                    # Limpiar espacios
-                    value = ' '.join(value.split())
-                    # Limitar longitud
-                    if len(value) > 200:
-                        value = value[:197] + '...'
-                    extracted_data[key] = value
-            
-            # Si no se encontraron datos, crear valores por defecto
-            if not extracted_data.get('vendor'):
-                # Intentar obtener vendor del remitente del email
-                if hasattr(self, 'current_email_sender'):
-                    extracted_data['vendor'] = self.current_email_sender
-            
-            if not extracted_data.get('concept'):
-                extracted_data['concept'] = 'Documento adjunto'
-            
-            if not extracted_data.get('invoice_number'):
-                # Generar un número basado en timestamp
-                extracted_data['invoice_number'] = f"DOC-{datetime.now().strftime('%Y%m%d%H%M%S')}"
             
             # Mejorar datos con análisis contextual
             enhanced_data = self._enhance_with_context(extracted_data, text)
@@ -244,89 +202,32 @@ class InvoiceExtractor:
             # Categorizar
             enhanced_data['category'] = self._categorize_invoice(enhanced_data, text)
             
-            logger.info(f"✅ Datos extraídos: {enhanced_data.get('vendor', 'N/A')}")
+            logger.info(f"✅ Datos extraídos con {enhanced_data['confidence']:.0%} de confianza")
             
             return enhanced_data
             
         except Exception as e:
             logger.error(f"❌ Error extrayendo datos: {e}")
-            # Retornar datos mínimos
-            return {
-                'vendor': 'Error en extracción',
-                'concept': 'Error procesando documento',
-                'invoice_number': f"ERR-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                'confidence': 0.0
-            }
-    
-    #def _content_to_text(self, content: Any) -> str:
-    #    """Convierte diferentes tipos de contenido a texto"""
-    #    if isinstance(content, str):
-    #        return content
-    #    elif isinstance(content, bytes):
-    #        try:
-    #            return content.decode('utf-8', errors='ignore')
-    #        except:
-    #            return content.decode('latin-1', errors='ignore')
-    #    elif isinstance(content, dict):
-    #        # Si es un dict, buscar campos relevantes
-    #        text_parts = []
-    #        for key in ['text', 'body', 'content', 'subject', 'description']:
-    #            if key in content:
-    #                text_parts.append(str(content[key]))
-    #        return '\n'.join(text_parts)
-    #    else:
-    #        return str(content)
-    
+            return None
     
     def _content_to_text(self, content: Any) -> str:
-        """Convierte diferentes tipos de contenido a texto LIMPIO"""
-        
-        text = ""
-        
+        """Convierte diferentes tipos de contenido a texto"""
         if isinstance(content, str):
-            text = content
+            return content
         elif isinstance(content, bytes):
             try:
-                text = content.decode('utf-8', errors='ignore')
+                return content.decode('utf-8', errors='ignore')
             except:
-                text = content.decode('latin-1', errors='ignore')
+                return content.decode('latin-1', errors='ignore')
         elif isinstance(content, dict):
             # Si es un dict, buscar campos relevantes
             text_parts = []
             for key in ['text', 'body', 'content', 'subject', 'description']:
                 if key in content:
                     text_parts.append(str(content[key]))
-            text = '\\n'.join(text_parts)
+            return '\n'.join(text_parts)
         else:
-            text = str(content)
-        
-        # IMPORTANTE: Limpiar contenido XML/RDF/PDF metadata
-        import re
-        
-        # Eliminar bloques XML/RDF completos
-        text = re.sub(r'<\\?xml[^>]*\\?>[\\s\\S]*?</rdf:RDF>', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'<rdf:RDF[\\s\\S]*?</rdf:RDF>', '', text, flags=re.IGNORECASE)
-        
-        # Eliminar tags XML/HTML
-        text = re.sub(r'<[^>]+>', ' ', text)
-        
-        # Eliminar namespaces y URIs
-        text = re.sub(r'xmlns:[^=]+=\\"[^\\"]+\\"', '', text)
-        text = re.sub(r'http[s]?://[^\\s]+', '', text)
-        
-        # Eliminar caracteres no imprimibles excepto espacios y saltos de línea
-        text = ''.join(char for char in text if char.isprintable() or char in '\\n\\r\\t ')
-        
-        # Normalizar espacios
-        text = re.sub(r'\\s+', ' ', text)
-        
-        # Si el texto resultante es muy corto o solo tiene basura, retornar vacío
-        if len(text.strip()) < 10:
-            return ""
-        
-        return text.strip()
-    
-    
+            return str(content)
     
     def _extract_with_patterns(self, text: str) -> Dict[str, Any]:
         """Extrae datos usando patrones regex"""
@@ -792,94 +693,6 @@ def extract_phone_numbers(text: str) -> List[str]:
         phone_numbers.extend(matches)
     
     return list(set(phone_numbers))  # Eliminar duplicados
-
-
-
-# 🔧 AGREGAR ESTOS MÉTODOS NUEVOS AL FINAL DEL ARCHIVO:
-
-def _extract_domain_from_sender(self, sender: str) -> str:
-    """Extrae el dominio del email del remitente"""
-    import re
-    
-    # Buscar patrón email@dominio.com
-    match = re.search(r'[\w\.-]+@([\w\.-]+\.\w+)', sender)
-    if match:
-        return match.group(1)
-    return ''
-
-def _extract_sender_name(self, sender: str) -> str:
-    """Extrae el nombre del remitente si está en formato 'Nombre <email>'"""
-    import re
-    
-    # Formato: "Nombre <email@domain.com>"
-    match = re.match(r'^([^<]+)\s*<', sender.strip())
-    if match:
-        name = match.group(1).strip().strip('"\'')
-        return name
-    
-    # Si no hay nombre, usar la parte antes del @
-    email_match = re.search(r'([\w\.-]+)@', sender)
-    if email_match:
-        username = email_match.group(1)
-        # Convertir a formato más legible
-        return username.replace('.', ' ').replace('_', ' ').title()
-    
-    return ''
-
-def _clean_special_chars(self, text: str) -> str:
-    """
-    🔧 MÉTODO MEJORADO: Limpia caracteres especiales y ilegibles de forma agresiva
-    """
-    if not text:
-        return text
-    
-    try:
-        # 🔧 PASO 1: Eliminar caracteres no ASCII problemáticos
-        # Solo mantener caracteres alfanuméricos, espacios y puntuación básica
-        import re
-        
-        # Permitir solo caracteres seguros
-        clean_text = re.sub(r'[^\w\s\-.,@áéíóúñü]', ' ', text, flags=re.IGNORECASE)
-        
-        # 🔧 PASO 2: Normalizar espacios
-        clean_text = ' '.join(clean_text.split())
-        
-        # 🔧 PASO 3: Limitar longitud
-        clean_text = clean_text[:200]
-        
-        # 🔧 PASO 4: Verificar que el resultado sea legible
-        if len(clean_text.strip()) < 2:
-            return 'Texto no legible'
-        
-        return clean_text.strip()
-        
-    except Exception as e:
-        self.logger.warning(f"      ⚠️ Error en limpieza de texto: {e}")
-        return 'Error de codificación'
-
-# 🔧 CORRECCIÓN 3: MEJOR LIMPIEZA DEL CONTENIDO DEL EMAIL
-def _clean_email_body(self, body: str) -> str:
-    """
-    Limpia el cuerpo del email de HTML, caracteres especiales y formato
-    """
-    if not body:
-        return ""
-    
-    # Eliminar tags HTML
-    import re
-    clean = re.sub(r'<[^>]+>', '', body)
-    
-    # Eliminar URLs
-    clean = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', clean)
-    
-    # Eliminar caracteres de control
-    clean = ''.join(char for char in clean if char.isprintable() or char.isspace())
-    
-    # Normalizar espacios y saltos de línea
-    clean = re.sub(r'\s+', ' ', clean)
-    
-    return clean.strip()
-
 
 # Clase de prueba para desarrollo
 class InvoiceExtractorTester:
