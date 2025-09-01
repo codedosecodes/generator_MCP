@@ -122,6 +122,8 @@ class InvoiceExtractor:
                 r'(?:no\.?|number|#)\s*(?:invoice|factura|bill)?:?\s*([A-Z0-9-]+)',
                 r'factura\s*(?:no\.?|número|#)?:?\s*([A-Z0-9-]+)',
                 r'invoice\s*(?:no\.?|number|#)?:?\s*([A-Z0-9-]+)',
+                r'einvoice\s*(?:no\.?|number|#)?:?\s*([A-Z0-9-]+)',
+                r'order\s*(?:no\.?|number|#)?:?\s*([A-Z0-9-]+)',
                 r'bill\s*(?:no\.?|number|#)?:?\s*([A-Z0-9-]+)',
                 r'(?:ref|reference)(?:\s*no\.?|:)?\s*([A-Z0-9-]+)',
                 r'#\s*([A-Z0-9-]+)',
