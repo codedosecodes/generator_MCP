@@ -469,6 +469,39 @@ class EmailProcessor:
         
         return body.strip()
     
+    def _get_email_body_by_id(self, email_id: str) -> str:
+        """
+        Obtiene el cuerpo de un email por su ID
+        
+        Args:
+            email_id: ID del email
+            
+        Returns:
+            Cuerpo del email como texto
+        """
+        if not self.connected:
+            if not self.connect():
+                return ""
+        
+        try:
+            # Fetch email
+            typ, data = self.connection.fetch(email_id.encode(), '(RFC822)')
+            
+            if typ != 'OK':
+                return ""
+            
+            raw_email = data[0][1]
+            msg = email.message_from_bytes(raw_email)
+            
+            # Usar el método existente para obtener el cuerpo
+            body = self._get_email_body(msg)
+            
+            return body
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo cuerpo del email: {e}")
+            return ""
+    
     def send_notification(self, recipient: str, subject: str, body: str) -> bool:
         """
         Envía una notificación por email
